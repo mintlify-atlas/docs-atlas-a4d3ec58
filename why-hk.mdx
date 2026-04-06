@@ -1,0 +1,136 @@
+---
+title: "Why hk?"
+description: "How hk's parallel execution model, smart stashing, and secure builtins make it faster and safer than pre-commit, lefthook, prek, and husky."
+---
+
+Tools like pre-commit, prek, and lefthook work by shelling out to linters one at a time. That means if two linters try to modify the same file at the same time, there will be a race condition — so they don't even try. hk solves this at the core and unlocks safe parallelism.
+
+## Parallel execution with file-level locking
+
+hk maintains a **read/write lock for every file being linted**. A linter that only reads a file acquires a shared read lock — multiple linters can hold read locks on the same file simultaneously. A linter that needs to write a file acquires an exclusive write lock — it waits for any readers to finish, then runs alone.
+
+This means linters with non-overlapping file sets always run in parallel. Linters with overlapping files run in parallel where possible, and coordinate only when they would genuinely conflict.
+
+### How hk avoids write locks
+
+hk goes further by actively avoiding write locks through linter-specific integration:
+
+**ruff** — has diff output, which is ideal. hk runs `ruff format --diff` to get a patch without touching any files. hk holds only a read lock while running ruff, then applies the diff itself later. If multiple linters edited the same lines, it re-runs ruff to resolve conflicts.
+
+**prettier** — supports `--list-different`, which returns the names of files that need formatting without modifying them. hk uses this to run the check phase with only read locks across all targeted files, then narrows the set before running `prettier --write` on just the files that need it.
+
+For linters with no diff or list mode (eslint is the main example), hk falls back to a write lock on all targeted files. Other linters that don't touch the same files still run in parallel. You can also use the `check_first` option to run a check pass first and only invoke the fix on failing files.
+
+<Note>
+  This integration work is why hk ships a large library of [builtins](/builtins) — you get the benefits without having to configure each linter's lock strategy yourself.
+</Note>
+
+## Smart stashing
+
+Here's a scenario every developer hits: you have a file with some changes staged and other changes you're still working on. Your pre-commit hook runs a formatter — and suddenly your unstaged work-in-progress gets formatted and staged along with everything else. Your careful partial commit is ruined.
+
+hk solves this with a **three-way merge stash strategy**:
+
+1. **Before hooks run** — hk snapshots your working tree and stashes only the unstaged changes (the diff between your worktree and your index). Your working tree now matches your staged content exactly.
+2. **Hooks run** — linters and fixers see only what you're actually committing. If prettier reformats a file, it reformats the staged version, not your work-in-progress.
+3. **After hooks run** — hk does a three-way merge to combine the fixer's changes with your unstaged work. If the fixer changed line 5 and your unstaged changes are on line 20, both are preserved. If there's a conflict, your unstaged changes take priority — hk never destroys your in-progress work.
+
+This works even with partially staged hunks in a single file. If you `git add -p` to stage just one function, hk will lint that function, apply fixes to it, and leave your other unstaged changes untouched.
+
+Other tools either don't stash at all (lefthook), or do basic stashing that can lose changes when fixers and unstaged edits touch the same lines (pre-commit, prek).
+
+## Built-in utilities
+
+hk ships fast **Rust-native utilities** for common checks: trailing whitespace removal, end-of-file newline fixing, and merge conflict detection. These run as part of the hk binary itself — no extra tools to install, and no subprocess overhead. They use `check_diff` mode so they always run in parallel with other linters.
+
+## Plugin security
+
+pre-commit and prek download hook implementations from external git repositories. Each hook repo contains its own environment setup, dependencies, and entry points — you're running code pulled from third-party repos on every commit.
+
+hk builtins are just [Pkl](https://pkl-lang.org/) config files hosted in the [hk repository](https://github.com/jdx/hk/tree/main/pkl/builtins) and fetched via the `import` statement in your `hk.pkl`. They define how to invoke linters that are already on your system — they don't download or execute third-party code. You can read exactly what each builtin does in a few lines of Pkl:
+
+```pkl
+// This is an entire hk builtin.
+prettier = new Config.Step {
+  glob = List("**/*.js", "**/*.ts", "**/*.css", "**/*.json", "**/*.md")
+  check = "prettier --check {{ files }}"
+  check_list_files = "prettier --list-different {{ files }}"
+  fix = "prettier --write {{ files }}"
+}
+```
+
+Compare that to pre-commit:
+
+```yaml
+# pre-commit: hooks are downloaded from external git repos
+repos:
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v3.1.0
+    hooks:
+      - id: prettier
+```
+
+## Comparisons
+
+<AccordionGroup>
+  <Accordion title="vs pre-commit">
+    [pre-commit](https://pre-commit.com/) is the most popular hook manager. It's written in Python and requires Python as a runtime dependency.
+
+    - Runs hooks **sequentially** — hook B waits for hook A to finish completely before starting.
+    - Downloads hook code from external git repos, running third-party code on every commit.
+    - Requires Python on every developer's machine.
+    - Configuration is YAML with no schema validation.
+
+    hk gets its speed from parallelism. Running 10 linters in parallel is fundamentally faster than running them one at a time, regardless of how fast the manager itself is.
+  </Accordion>
+
+  <Accordion title="vs prek">
+    [prek](https://github.com/j178/prek) is pre-commit reimplemented in Rust. It's faster than pre-commit at startup but follows the same execution model:
+
+    - Still runs hooks **sequentially** — same fundamental bottleneck as pre-commit.
+    - Still downloads hook code from external git repos.
+    - prek itself doesn't require Python, but Python-based hooks (which are most of the pre-commit ecosystem) still need Python at runtime — prek manages it automatically via uv.
+    - prek does have some built-in Rust-native hooks for common checks, similar to hk's `hk util` commands.
+
+    The core difference: prek is a faster *runner* of the same sequential model. hk is a different model entirely.
+  </Accordion>
+
+  <Accordion title="vs lefthook">
+    [lefthook](https://github.com/evilmartians/lefthook) is a hook manager written in Go. It's the closest to hk in philosophy — it supports parallel execution.
+
+    The problem: lefthook has **no file-level coordination**. If two parallel jobs modify the same file, you get a race condition — the last writer wins and the other's changes are silently discarded. In practice you either accept the risk or configure your hooks to have non-overlapping file patterns, which defeats the purpose of built-in parallelism.
+
+    Other differences:
+    - lefthook has no built-in linter definitions — you write raw shell commands in YAML.
+    - lefthook does not stash unstaged changes before running fix hooks, which can cause in-progress work to be accidentally staged.
+    - lefthook uses YAML; hk uses [Pkl](https://pkl-lang.org/) for type-safe, composable configuration.
+  </Accordion>
+
+  <Accordion title="vs husky + lint-staged">
+    [husky](https://github.com/typicode/husky) (~35k stars) and [lint-staged](https://github.com/lint-staged/lint-staged) (~14k stars) are the most popular combination in the JavaScript ecosystem.
+
+    husky is intentionally minimal — it just wires up git hooks to scripts. lint-staged handles the actual linting orchestration. lint-staged runs tasks matched to *different* glob patterns in parallel, but tasks targeting the *same* glob run sequentially. There's no file-level coordination, so if two tasks touch the same file through different globs, you get a race condition.
+
+    Both require Node.js. If your project isn't a JavaScript project, you're adding a Node.js runtime dependency purely for your hook manager.
+  </Accordion>
+</AccordionGroup>
+
+## Feature comparison
+
+| Feature | hk | pre-commit | lefthook | prek |
+|---|---|---|---|---|
+| Parallel execution | File-locked | No | Unsafe | No |
+| Language | Rust | Python | Go | Rust |
+| Requires Python | No | Yes | No | Often |
+| Config format | Pkl | YAML | YAML | YAML |
+| Built-in linter configs | [120+](/builtins) | — | — | — |
+| Plugin model | Pkl config (local) | Git repos (remote) | Shell commands | Git repos (remote) |
+| `check_diff` support | Yes | No | No | No |
+| `check_list_files` support | Yes | No | No | No |
+| Stash management | Yes | Partial | No | Partial |
+| Dependency resolution | Yes | No | No | No |
+| Batched execution | Yes | No | No | No |
+
+See [Benchmarks](/benchmarks) for reproducible performance numbers — hk, lefthook, pre-commit, and prek running 10 linters on a synthetic 6,000-file project.
+
+Ready to try it? [Get started](/quickstart).

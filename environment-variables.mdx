@@ -1,0 +1,240 @@
+---
+title: "Environment variables"
+description: "Full reference for all HK_* environment variables used to configure hk."
+---
+
+Environment variables can be used to configure hk. They apply to the current command or, when exported, to all commands in the session.
+
+## Core
+
+<ParamField path="HK_FILE" type="string" default="hk.pkl">
+  The configuration file to use.
+
+  ```bash
+  HK_FILE=my-hk.pkl hk check
+  ```
+</ParamField>
+
+<ParamField path="HK_FIX" type="bool" default="true">
+  If set to `false`, hk will not run fix steps. Use this to enforce check-only mode.
+
+  ```bash
+  HK_FIX=false hk check
+  ```
+</ParamField>
+
+<ParamField path="HK_JOBS" type="usize" default="(number of CPU cores)">
+  The number of steps to run in parallel. Defaults to the number of logical CPU cores on the machine.
+
+  ```bash
+  HK_JOBS=4 hk check
+  ```
+</ParamField>
+
+<ParamField path="HK_PROFILE" type="string[] (comma-separated)">
+  The profile(s) to activate when running hooks. Steps that require a profile not in this list are skipped.
+
+  ```bash
+  HK_PROFILE=ci,slow hk check
+  ```
+</ParamField>
+
+## Git integration
+
+<ParamField path="HK_STASH" type="git | patch-file | none" default="git">
+  Controls how unstaged changes are stashed before hooks run.
+
+  - `git` — use `git stash` to stash unstaged changes
+  - `patch-file` — use an hk-generated patch file (typically faster, avoids `index is locked` errors)
+  - `none` — do not stash; faster but may accidentally stage unstaged changes if they overlap with staged files that are fixed
+
+  ```bash
+  HK_STASH=patch-file hk run pre-commit
+  ```
+</ParamField>
+
+<ParamField path="HK_STASH_UNTRACKED" type="bool" default="true">
+  If `true`, untracked files are also stashed along with unstaged changes. Set to `false` to leave untracked files in the working tree during hook execution.
+</ParamField>
+
+<ParamField path="HK_LIBGIT2" type="bool" default="true">
+  If `false`, hk shells out to git commands instead of using the embedded libgit2 library. This can improve performance when `fsmonitor` is active or when libgit2 has trouble with a repository layout.
+</ParamField>
+
+## Paths
+
+<ParamField path="HK_CACHE_DIR" type="path" default="~/.cache/hk">
+  The directory where hk stores cached data.
+</ParamField>
+
+<ParamField path="HK_STATE_DIR" type="path" default="~/.local/state/hk">
+  The directory where hk stores runtime state, including the default log file.
+</ParamField>
+
+<ParamField path="HK_LOG_FILE" type="path" default="~/.local/state/hk/hk.log">
+  The file path for log output. Set to a custom path to redirect logs.
+
+  ```bash
+  HK_LOG_FILE=/tmp/my-hk.log hk check
+  ```
+</ParamField>
+
+## Logging
+
+<ParamField path="HK_LOG" type="trace | debug | info | warn | error" default="info">
+  The minimum log level for console output.
+
+  ```bash
+  HK_LOG=debug hk check
+  ```
+</ParamField>
+
+<ParamField path="HK_LOG_FILE_LEVEL" type="trace | debug | info | warn | error" default="(value of HK_LOG)">
+  The minimum log level written to the log file. Defaults to the same level as `HK_LOG`. Set this independently to capture detailed logs in the file without verbose console output.
+
+  ```bash
+  HK_LOG=warn HK_LOG_FILE_LEVEL=trace hk check
+  ```
+</ParamField>
+
+<ParamField path="HK_TRACE" type="1 | text | json">
+  Enables tracing output for performance analysis. `1` and `text` produce human-readable hierarchical output. `json` produces newline-delimited JSON (JSONL) suitable for programmatic analysis.
+
+  ```bash
+  HK_TRACE=text hk check
+  HK_TRACE=json hk check > trace.jsonl
+  ```
+</ParamField>
+
+<ParamField path="HK_SUMMARY_TEXT" type="bool" default="false">
+  Controls whether per-step output summaries are printed in plain text mode. By default, summaries are only shown when hk renders progress bars. Set to `true` to force summaries to appear in text (non-TTY) mode.
+
+  ```bash
+  HK_SUMMARY_TEXT=1 hk check
+  ```
+</ParamField>
+
+## Skipping
+
+<ParamField path="HK_SKIP_STEPS" type="string[] (comma-separated)">
+  A list of step names to skip when running pre-commit and pre-push hooks. All skip sources (env var, git config, user config) are unioned together.
+
+  ```bash
+  HK_SKIP_STEPS=lint,typecheck hk run pre-commit
+  ```
+
+  This can also be configured via:
+  - Git config: `git config hk.skipSteps "lint,typecheck"`
+  - User config (`.hkrc.pkl`): `skip_steps = List("lint", "typecheck")`
+</ParamField>
+
+<ParamField path="HK_SKIP_HOOK" type="string[] (comma-separated)">
+  A list of hook names to skip entirely. Unlike `HK_SKIP_STEPS`, this skips the entire hook and all of its steps.
+
+  ```bash
+  HK_SKIP_HOOK=pre-commit hk run pre-commit
+  ```
+
+  This can also be configured via:
+  - Git config: `git config hk.skipHook "pre-commit"`
+  - User config (`.hkrc.pkl`): `skip_hooks = List("pre-commit")`
+</ParamField>
+
+## Performance
+
+<ParamField path="HK_CHECK_FIRST" type="bool" default="true">
+  When `true`, hk runs check commands first, then runs fix commands only for steps that failed and whose files overlap with other steps. This allows maximum parallelism: multiple check commands can run concurrently against the same file, while fix commands — which may write to files — are serialized only when necessary.
+
+  When `false`, hk uses simpler logic that always runs fix commands serially for overlapping files.
+</ParamField>
+
+<ParamField path="HK_FAIL_FAST" type="bool" default="true">
+  If `true`, hk stops executing remaining steps after the first step fails.
+</ParamField>
+
+## Output
+
+<ParamField path="HK_HIDE_WARNINGS" type="string[] (comma-separated)">
+  A list of warning tags to suppress. Available tags:
+
+  - `missing-profiles` — suppresses warnings about steps being skipped due to missing profiles
+
+  ```bash
+  HK_HIDE_WARNINGS=missing-profiles hk check
+  ```
+
+  Warning categories can also be opted into in `hk.pkl` or `.hkrc.pkl`:
+
+  ```pkl
+  warnings = List("missing-profiles")
+  ```
+</ParamField>
+
+<ParamField path="HK_HIDE_WHEN_DONE" type="bool" default="false">
+  If `true`, hk clears the progress output once the hook finishes successfully. Errors are always shown regardless of this setting.
+</ParamField>
+
+<ParamField path="HK_TIMING_JSON" type="path">
+  If set to a file path, hk writes a JSON timing report at the end of the run. The report includes total wall time and per-step wall time. Overlapping parallel intervals are merged so time is not double-counted.
+
+  ```bash
+  HK_TIMING_JSON=/tmp/hk-timing.json hk check
+  ```
+
+  The `steps` object maps step names to:
+  - `wall_time_ms` — merged wall time in milliseconds
+  - `profiles` — (optional) profiles required by the step; omitted if none
+
+  Example output:
+
+  ```json
+  {
+    "total": { "wall_time_ms": 12456 },
+    "steps": {
+      "lint": { "wall_time_ms": 4321, "profiles": ["ci", "fast"] },
+      "fmt": { "wall_time_ms": 2100 },
+      "typecheck": { "wall_time_ms": 6035 }
+    }
+  }
+  ```
+
+  When a hook-level `report` command is configured in `hk.pkl`, hk also sets `HK_REPORT_JSON` to the same timing JSON content in memory and executes the command after the hook finishes. This lets custom scripts post-process or upload timing data without reading a file.
+</ParamField>
+
+## Misc
+
+<ParamField path="HK_MISE" type="bool" default="false">
+  When `true`:
+  - `hk install` uses `mise x` to execute hooks, so mise tools are available without activating mise in the shell
+  - `hk init` generates a `mise.toml` file with hk configured
+
+  ```bash
+  HK_MISE=true hk install
+  ```
+</ParamField>
+
+<ParamField path="HK_EXCLUDE" type="string[] (comma-separated)">
+  Glob patterns to exclude from processing. These are unioned with exclude patterns from git config, user config, and project config. Supports both directory names and glob patterns.
+
+  ```bash
+  # Exclude specific directories
+  HK_EXCLUDE=node_modules,dist hk check
+
+  # Exclude using glob patterns
+  HK_EXCLUDE="**/*.min.js,**/*.map" hk check
+  ```
+</ParamField>
+
+<ParamField path="HK_PKL_BACKEND" type="pklr | pkl">
+  Controls which backend evaluates `hk.pkl` configuration files.
+
+  - `pklr` — use the built-in Rust Pkl evaluator ([pklr](https://github.com/jdx/pklr)). No external pkl CLI required. This is experimental and may not support every Pkl feature yet.
+  - `pkl` — use the external `pkl` CLI (the default). Install it with `mise use -g pkl`.
+
+  ```bash
+  # Use the built-in evaluator (no pkl CLI needed)
+  HK_PKL_BACKEND=pklr hk check
+  ```
+
+  See [Pkl configuration language](/pkl-introduction) for details.
+</ParamField>

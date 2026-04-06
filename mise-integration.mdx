@@ -1,0 +1,130 @@
+---
+title: "mise integration"
+description: "How to use hk alongside mise-en-place for tool management, task running, environment variables, and automated hook installation."
+---
+
+Most git hook managers provide features that hk's sister project, [mise-en-place](https://github.com/jdx/mise), already covers well. Using hk and mise together gives you the best of both: hk handles the git lifecycle and linting, while mise manages tool versions, tasks, and environment variables.
+
+To opt in to all mise-specific features at once, set:
+
+```bash
+export HK_MISE=1
+```
+
+<Info>
+  Setting `HK_MISE=1` wraps your git hooks with `mise x`. This ensures mise sets up the correct environment and tool versions before running hk, even for developers who haven't activated mise in their shell.
+</Info>
+
+## `hk init --mise`
+
+The `--mise` flag on `hk init` generates a `mise.toml` in the repository root. It installs hk and defines a `pre-commit` task so developers can run `mise run pre-commit` as a consistent project action alongside other mise tasks.
+
+```bash
+hk init --mise
+```
+
+## `hk install --mise`
+
+The `--mise` flag on `hk install` wraps each git hook script with `mise x`, so the mise environment (tool versions, PATH shims, env vars) is available when hooks fire:
+
+```bash
+hk install --mise
+```
+
+This is useful for teams where some developers have not activated mise in their shell — the hooks will still work correctly because `mise x` sets up the environment each time.
+
+## Tool management
+
+mise's tool management lets you pin the exact version of every tool used by `hk.pkl` in a single `mise.toml`:
+
+```bash
+mise use hk
+mise use pkl
+mise use npm:prettier
+mise use jq
+```
+
+This creates (or updates) `mise.toml`, which you commit to the repository:
+
+```toml mise.toml
+[tools]
+hk = "latest"
+pkl = "latest"
+"npm:prettier" = "latest"
+jq = "latest"
+```
+
+See the [mise dev tools docs](https://mise.jdx.dev/dev-tools/) for the full list of supported tool registries and version pinning options.
+
+## Task management
+
+[mise tasks](https://mise.jdx.dev/tasks/) can be called directly inside hk steps. This gives you access to task features like dependency management, option parsing, and parallel execution.
+
+```pkl hk.pkl
+amends "package://github.com/jdx/hk/releases/download/v1.41.0/hk@1.41.0#/Config.pkl"
+
+hooks {
+    ["pre-commit"] {
+        fix = true
+        stash = "git"
+        steps {
+            ["prelint"] {
+                check = "mise run prelint"
+                exclusive = true  // ensure this finishes before other steps start
+            }
+            // ... more steps ...
+            ["postlint"] {
+                check = "mise run postlint"
+                exclusive = true  // wait for all previous steps to finish
+            }
+        }
+    }
+}
+```
+
+## Environment variables
+
+Define an `[env]` section in `mise.toml` to inject environment variables into every hook run:
+
+```toml mise.toml
+[env]
+PRETTIER_CONFIG = ".prettierrc.json"
+NODE_ENV = "development"
+```
+
+When hooks run with `mise x` (via `hk install --mise` or `HK_MISE=1`), these variables are set automatically. mise has much richer environment variable support — see the [mise environments docs](https://mise.jdx.dev/environments/) for path manipulation, templating, and more.
+
+## Recommended setup
+
+The recommended approach is to use `mise.toml` as the single source of truth for tools and environment, and use hk only for the git lifecycle. Set `HK_MISE=1` in `mise.toml` and use a `postinstall` hook to automate hook installation for your whole team:
+
+```toml mise.toml
+[tools]
+hk = "latest"
+pkl = "latest"
+# add other tools here: prettier, actionlint, etc.
+
+[env]
+HK_MISE = "1"
+
+[hooks]
+# automatically install/update hooks whenever tools are installed
+postinstall = "hk install --mise"
+```
+
+With this setup:
+
+<Steps>
+  <Step title="Developer clones the repo">
+    A new team member clones the repository.
+  </Step>
+  <Step title="Developer runs `mise install`">
+    mise installs all pinned tools and then runs the `postinstall` hook.
+  </Step>
+  <Step title="Hooks are installed automatically">
+    `hk install --mise` installs git hooks wrapped with `mise x`. No manual hook installation needed.
+  </Step>
+  <Step title="Hooks run in the correct environment">
+    When the developer commits or pushes, hooks fire with the full mise environment — correct tool versions, PATH shims, and env vars — regardless of whether mise is activated in their shell.
+  </Step>
+</Steps>

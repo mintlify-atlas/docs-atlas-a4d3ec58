@@ -1,0 +1,60 @@
+---
+title: "Introduction"
+description: "hk is a high-performance git hook manager that runs linters in parallel using file-level read/write locks — safely, without race conditions."
+---
+
+hk manages your git hooks and project lints with an emphasis on **performance**. Unlike other hook managers that shell out to linters sequentially, hk maintains a read/write lock for every file being linted and runs as many linters concurrently as possible.
+
+<Note>
+  hk is a single Rust binary with no runtime dependencies. The built-in `pklr` evaluator means you don't even need the pkl CLI installed.
+</Note>
+
+## What makes hk different
+
+Most git hook managers — pre-commit, prek, lefthook — work by shelling out to linters one after another. Running 10 linters sequentially means your commit time is the *sum* of every linter's runtime. hk runs them in parallel, making commit time closer to the *slowest* single linter.
+
+Safe parallelism requires coordination. If two linters both try to rewrite the same file at the same time, one will silently overwrite the other's changes. hk prevents this with **file-level read/write locks**: multiple linters can read the same file simultaneously, but a linter that needs to write first acquires an exclusive lock.
+
+Beyond speed, hk adds:
+
+- **Smart stashing** — a three-way merge strategy ensures your unstaged work-in-progress is never clobbered by fixers during a commit.
+- **120+ built-in linter configs** — Prettier, ESLint, Ruff, Cargo Clippy, Golangci-lint, and more, ready to drop in with a single line of Pkl.
+- **Type-safe Pkl configuration** — Apple's [Pkl](https://pkl-lang.org/) language gives you schema validation and IDE autocomplete instead of stringly-typed YAML.
+- **Secure plugin model** — builtins are Pkl config files in the hk repository, not third-party code downloaded from external git repos.
+
+## Feature comparison
+
+| Feature | hk | pre-commit | lefthook | prek |
+|---|---|---|---|---|
+| Parallel execution | File-locked | No | Unsafe | No |
+| Language | Rust | Python | Go | Rust |
+| Requires Python | No | Yes | No | Often |
+| Config format | Pkl | YAML | YAML | YAML |
+| Built-in linter configs | [120+](/builtins) | — | — | — |
+| Plugin model | Pkl config (local) | Git repos (remote) | Shell commands | Git repos (remote) |
+| `check_diff` support | Yes | No | No | No |
+| `check_list_files` support | Yes | No | No | No |
+| Stash management | Yes | Partial | No | Partial |
+| Dependency resolution | Yes | No | No | No |
+| Batched execution | Yes | No | No | No |
+
+<Tip>
+  See [Benchmarks](/benchmarks) for reproducible performance numbers comparing hk against pre-commit, lefthook, and prek on a synthetic 6,000-file project with 10 overlapping linters.
+</Tip>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quick start" icon="rocket" href="/quickstart">
+    Install hk and configure your first project in under 5 minutes.
+  </Card>
+  <Card title="Why hk?" icon="bolt" href="/why-hk">
+    Deep dive into parallel execution, smart stashing, and how hk compares to alternatives.
+  </Card>
+  <Card title="Configuration" icon="gear" href="/configuration">
+    Learn how to write `hk.pkl` with hooks, steps, globs, and builtins.
+  </Card>
+  <Card title="Built-in linters" icon="list-check" href="/builtins">
+    Browse 120+ pre-configured linters and formatters ready to use instantly.
+  </Card>
+</CardGroup>

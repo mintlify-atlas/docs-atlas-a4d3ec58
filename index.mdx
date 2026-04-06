@@ -1,97 +1,103 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "hk — Git Hook Manager"
+description: "A high-performance git hook manager that runs linters in parallel with file-level locking. Faster, safer, and smarter than pre-commit, lefthook, and husky."
 ---
 
-## Setting up
+hk manages your git hooks and project lints with an emphasis on **performance**. Unlike other hook managers, hk runs linters in parallel using file-level read/write locks — so you get maximum concurrency without race conditions.
 
-Get your documentation site up and running in minutes.
-
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Install hk and set up your first project in under 5 minutes.
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Why hk?" icon="bolt" href="/why-hk">
+    See how hk compares to pre-commit, lefthook, husky, and prek.
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Configuration" icon="gear" href="/configuration">
+    Learn how to configure hk.pkl with hooks, steps, and builtins.
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="Built-in Linters" icon="list-check" href="/builtins">
+    Browse 120+ pre-configured linters and formatters ready to use.
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## How it works
 
-Everything you need to create world-class documentation.
+<Steps>
+  <Step title="Install hk">
+    Install via mise, Homebrew, Cargo, or Aqua — hk is a single Rust binary with no runtime dependencies.
+    ```bash
+    mise use hk
+    ```
+  </Step>
+  <Step title="Initialize your project">
+    Run `hk init` to generate a `hk.pkl` configuration file in your repository root.
+    ```bash
+    hk init
+    ```
+  </Step>
+  <Step title="Configure your linters">
+    Edit `hk.pkl` to define hooks and steps using built-in linters or your own commands.
+    ```pkl
+    amends "package://github.com/jdx/hk/releases/download/v1.41.0/hk@1.41.0#/Config.pkl"
+    import "package://github.com/jdx/hk/releases/download/v1.41.0/hk@1.41.0#/Builtins.pkl"
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+    hooks {
+      ["pre-commit"] {
+        fix = true
+        stash = "git"
+        steps {
+          ["prettier"] = Builtins.prettier
+          ["eslint"] = Builtins.eslint
+        }
+      }
+    }
+    ```
+  </Step>
+  <Step title="Install and run">
+    Install the git hooks, then commit as normal — hk runs your linters in parallel automatically.
+    ```bash
+    hk install
+    git commit -m "feat: add feature"
+    ```
+  </Step>
+</Steps>
 
-## Need inspiration?
+## Key features
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+<CardGroup cols={2}>
+  <Card title="Parallel execution" icon="arrow-right-arrow-left">
+    Runs all linters concurrently with file-level read/write locks — safely, without race conditions.
+  </Card>
+  <Card title="120+ built-in linters" icon="database">
+    Prettier, ESLint, Ruff, Cargo Clippy, Golangci-lint, and 100+ more — ready to use instantly.
+  </Card>
+  <Card title="Smart stashing" icon="floppy-disk">
+    Three-way merge stashing protects your unstaged work-in-progress during hook runs.
+  </Card>
+  <Card title="Type-safe Pkl config" icon="shield-check">
+    Apple's Pkl language gives you schema validation, IDE autocomplete, and composable configs.
+  </Card>
+  <Card title="mise integration" icon="wrench">
+    Deep integration with mise-en-place for tool management, task running, and env vars.
+  </Card>
+  <Card title="Zero runtime deps" icon="cube">
+    Single Rust binary. Built-in evaluator (pklr) means no pkl CLI required.
+  </Card>
+</CardGroup>
+
+## CLI reference
+
+<CardGroup cols={2}>
+  <Card title="hk check" icon="circle-check" href="/cli/check">
+    Run linters in check-only mode on staged or all files.
+  </Card>
+  <Card title="hk fix" icon="wand-magic-sparkles" href="/cli/fix">
+    Run linters and auto-fix issues in staged or all files.
+  </Card>
+  <Card title="hk run" icon="play" href="/cli/run">
+    Explicitly trigger a named git hook without committing.
+  </Card>
+  <Card title="hk util" icon="toolbox" href="/cli/util">
+    Built-in Rust utilities for trailing whitespace, EOF, and more.
+  </Card>
+</CardGroup>

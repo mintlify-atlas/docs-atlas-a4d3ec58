@@ -1,0 +1,142 @@
+---
+title: "hk init"
+description: "Generate an hk.pkl configuration file in the project root."
+---
+
+**Usage**: `hk init [FLAGS]`
+
+`hk init` generates a new `hk.pkl` configuration file in the current directory. It scans your project for recognizable files (e.g. `Cargo.toml`, `package.json`, `go.mod`, `.python-version`) and automatically selects appropriate built-in linter definitions. If no project files are detected it generates a minimal template you can customize.
+
+By default, `hk init` configures three hooks: `pre-commit`, `check`, and `fix`.
+
+## Flags
+
+<ParamField query="-f, --force" type="boolean">
+  Overwrite an existing `hk.pkl` file. Without this flag, `hk init` warns and exits if `hk.pkl` already exists.
+</ParamField>
+
+<ParamField query="-i, --interactive" type="boolean">
+  Interactive mode. Displays detected project files, then lets you manually select which built-in linters and which hooks to include.
+</ParamField>
+
+<ParamField query="--mise" type="boolean">
+  Also generate a `mise.toml` file that configures hk and pkl as project tools.
+
+  Set `HK_MISE=1` to make this the default behavior for all `hk init` invocations.
+</ParamField>
+
+## What gets generated
+
+### hk.pkl (auto-detected example)
+
+When hk detects a Rust project, the generated file might look like:
+
+```pkl hk.pkl
+amends "package://github.com/jdx/hk/releases/download/v1.41.0/hk@1.41.0#/Config.pkl"
+import "package://github.com/jdx/hk/releases/download/v1.41.0/hk@1.41.0#/Builtins.pkl"
+
+hooks {
+  ["pre-commit"] {
+    steps {
+      ["cargo-fmt"] = Builtins.cargo_fmt
+      ["cargo-clippy"] = Builtins.cargo_clippy
+    }
+  }
+  ["check"] {
+    steps {
+      ["cargo-fmt"] = Builtins.cargo_fmt
+      ["cargo-clippy"] = Builtins.cargo_clippy
+    }
+  }
+  ["fix"] {
+    fix = true
+    steps {
+      ["cargo-fmt"] = Builtins.cargo_fmt
+    }
+  }
+}
+```
+
+### hk.pkl (default template)
+
+When no project files are detected:
+
+```pkl hk.pkl
+amends "package://github.com/jdx/hk/releases/download/v1.41.0/hk@1.41.0#/Config.pkl"
+
+hooks {
+  ["pre-commit"] {
+    steps {
+      // Add your steps here
+    }
+  }
+  ["check"] {
+    steps {
+      // Add your steps here
+    }
+  }
+  ["fix"] {
+    fix = true
+    steps {
+      // Add your steps here
+    }
+  }
+}
+```
+
+### mise.toml (with --mise)
+
+```toml mise.toml
+[tools]
+hk = "latest"
+pkl = "latest"
+
+[tasks.pre-commit]
+run = "hk run pre-commit"
+```
+
+## Examples
+
+<CodeGroup>
+
+```bash Auto-detect and generate
+hk init
+```
+
+```bash Overwrite an existing config
+hk init --force
+```
+
+```bash Interactive mode
+hk init --interactive
+```
+
+```bash Generate hk.pkl and mise.toml
+hk init --mise
+```
+
+```bash Force regenerate with mise
+hk init --force --mise
+```
+
+</CodeGroup>
+
+## Typical setup workflow
+
+<Steps>
+  <Step title="Generate the config">
+    ```bash
+    hk init
+    ```
+    hk scans the project and writes `hk.pkl`.
+  </Step>
+  <Step title="Review hk.pkl">
+    Open `hk.pkl` and confirm the detected linters are correct. Add or remove steps as needed.
+  </Step>
+  <Step title="Install the git hooks">
+    ```bash
+    hk install
+    ```
+    This writes hook scripts into `.git/hooks/` so hk runs automatically on commit.
+  </Step>
+</Steps>

@@ -1,0 +1,286 @@
+---
+title: "Pkl configuration language"
+description: "An introduction to Pkl — the configuration language hk uses — covering syntax, imports, amending, caching, and how to test your config."
+---
+
+hk uses [Pkl](https://pkl-lang.org/) from Apple as its configuration language. Pkl is a statically-typed, schema-validated configuration language designed for building safe, composable configs. This page covers the Pkl concepts you need to write and maintain `hk.pkl` files.
+
+## Why Pkl?
+
+- **Built-in schema validation** — your editor can display type errors in your config, not just syntax errors.
+- **Native imports** — Pkl can import other Pkl files from the filesystem or HTTP URLs, so hk doesn't need its own import system.
+- **Amend / compose** — you can create shared objects and override specific fields without duplicating the rest. This makes patterns like local overrides clean and explicit.
+- **Static but expressive** — Pkl is comprehensive enough that hk doesn't need a plugin system. Shared, cached Pkl files keep evaluation fast.
+
+## Downsides
+
+Pkl is a young language with some rough edges worth knowing about:
+
+- Editor / syntax-highlighting support is still maturing (though it's backed by Apple, so it's improving quickly).
+- `List(a, b, c)` instead of `[a, b, c]` — the list literal syntax is unusual.
+- The `amends` model can be confusing at first.
+- The `default` behavior in mappings has some surprising edge cases.
+- Caching means env vars embedded in `hk.pkl` won't cause a re-evaluation when they change.
+
+AI tools (Cursor, Copilot, etc.) handle Pkl well — you can ask them to write or explain Pkl snippets for you.
+
+## Dependencies
+
+hk supports two Pkl backends:
+
+<Tabs>
+  <Tab title="pklr (built-in, recommended)">
+    hk includes a built-in Pkl evaluator called [pklr](https://github.com/jdx/pklr). Enable it with:
+
+    ```bash
+    export HK_PKL_BACKEND=pklr
+    ```
+
+    No external Pkl installation required. pklr is experimental and may not support every Pkl feature yet, but it will eventually become the default backend.
+  </Tab>
+  <Tab title="pkl CLI">
+    The default backend uses the `pkl` CLI. Install it with mise:
+
+    ```bash
+    mise use -g pkl
+    ```
+
+    If you run into issues with pklr, unset `HK_PKL_BACKEND` to fall back to the pkl CLI.
+  </Tab>
+</Tabs>
+
+## Basic syntax
+
+### Types
+
+```pkl
+my_string = "hello"
+my_number = 1
+my_boolean = true
+list_of_strings = List("a", "b", "c")
+```
+
+### Mappings
+
+Mappings are key-value pairs, like objects or dictionaries in other languages:
+
+```pkl
+my_mapping = new Mapping<String, String> {
+    ["key"] = "value"
+    ["another"] = "value2"
+}
+```
+
+### Listings and lists
+
+Use `List(...)` for simple ordered collections of scalar values:
+
+```pkl
+my_list = List("a", "b", "c")
+```
+
+Use `new Listing<T>` for ordered collections of complex objects:
+
+```pkl
+my_listing = new Listing<Step> {
+    new Step {
+        check = "make lint"
+    }
+    new Step {
+        check = "make format"
+    }
+}
+```
+
+### Local variables
+
+hk will reject any top-level property it doesn't recognize. Use the `local` keyword for intermediate variables:
+
+```pkl
+local my_step = new Step {
+    check = "make lint"
+}
+```
+
+### Amending objects
+
+Amend an existing object to override specific fields while keeping the rest:
+
+```pkl
+local make_lint = new Step {
+    check = "make lint"
+}
+
+local linters = new Mapping<String, Step> {
+    ["proj-a"] = (make_lint) {
+        dir = "proj_a"
+    }
+    ["proj-b"] = (make_lint) {
+        dir = "proj_b"
+    }
+}
+```
+
+This is equivalent to copying the object and changing only the `dir` field in each copy. The amend syntax `(object) { overrides }` is used extensively with builtins:
+
+```pkl
+["prettier"] = (Builtins.prettier) {
+    glob = List("src/**/*.js", "src/**/*.ts")
+}
+```
+
+### Comments
+
+```pkl
+// Single-line comment
+/*
+  Multi-line comment
+*/
+/// Doc comment (not currently used by hk)
+```
+
+### Classes
+
+You won't usually define your own classes in an hk config, but you will instantiate classes provided by `Config.pkl`:
+
+```pkl
+local step = new Step {
+    glob = "**/*.rs"
+    check = "cargo fmt --check"
+    fix = "cargo fmt"
+}
+```
+
+## The `amends` line
+
+Every `hk.pkl` must start with an `amends` declaration. This line points at the base schema, which provides type checking and base class definitions:
+
+```pkl
+amends "package://github.com/jdx/hk/releases/download/v1.41.0/hk@1.41.0#/Config.pkl"
+```
+
+The `amends` line means "this file extends and overrides values from that file." It is what lets your config be validated against the schema — your IDE can show errors for wrong property names or types.
+
+For `hk.local.pkl`, amend the project's `hk.pkl` instead:
+
+```pkl
+amends "./hk.pkl"
+```
+
+## Imports
+
+Import other Pkl files to reference their values:
+
+```pkl
+// Import the Builtins module
+import "package://github.com/jdx/hk/releases/download/v1.41.0/hk@1.41.0#/Builtins.pkl"
+
+// Import a local file
+import "./shared-steps.pkl" as shared
+
+// Import a remote file
+import "https://example.com/shared-config.pkl" as remote
+```
+
+Imported modules are referenced by their alias (or by their filename stem if no alias is given).
+
+## Caching
+
+hk caches the evaluated output of each `hk.pkl` file until the file is modified. This makes repeated hook runs fast.
+
+<Warning>
+  Do not embed environment variables directly inside `hk.pkl` as dynamic values — the cache will not invalidate when those env vars change. Use the `env` block inside steps or hooks instead, or pass values via `HK_*` environment variables at runtime.
+</Warning>
+
+## Testing your config
+
+Use `pkl eval` to see exactly what hk will receive from your config file, without running hk:
+
+```bash
+$ pkl eval hk.pkl
+hooks {
+  ["pre-commit"] {
+    fix = true
+    steps {
+      ["prelint"] {
+        command = "lint"
+        args = ["--fix"]
+      }
+    }
+  }
+}
+```
+
+This is especially useful when using dynamic features like amending or local variables — you can verify the output before running any linters.
+
+You can also validate the config through hk itself:
+
+```bash
+hk validate
+```
+
+If you use the built-in step test framework, run tests with:
+
+```bash
+hk test                       # run all step tests
+hk test --step prettier       # run only prettier's tests
+hk test --name "formats json" # run a test by name
+hk test --list                # list tests without running them
+```
+
+## Full example
+
+Putting it all together — a complete `hk.pkl` using builtins, local variables, amending, and multiple hooks:
+
+```pkl hk.pkl
+amends "package://github.com/jdx/hk/releases/download/v1.41.0/hk@1.41.0#/Config.pkl"
+import "package://github.com/jdx/hk/releases/download/v1.41.0/hk@1.41.0#/Builtins.pkl"
+
+// Define linters as a local variable to share across hooks
+local linters = new Mapping<String, Step> {
+    ["actionlint"] = Builtins.actionlint
+    ["cargo-fmt"] = Builtins.cargo_fmt
+    ["cargo-clippy"] = (Builtins.cargo_clippy) {
+        profiles = List("slow")
+        check = "cargo clippy --manifest-path {{workspace_indicator}} --quiet -- -D warnings"
+    }
+    ["cargo-check"] = (Builtins.cargo_check) {
+        profiles = List("!slow")
+    }
+    ["prettier"] = (Builtins.prettier) {
+        glob = List("*.js", "*.ts", "*.yml", "*.yaml")
+    }
+    ["newlines"] = Builtins.newlines
+    ["trailing-whitespace"] = Builtins.trailing_whitespace
+}
+
+hooks = new {
+    ["pre-commit"] {
+        fix = true
+        stash = "git"
+        steps = new {
+            ["prelint"] {
+                check = "mise run prelint"
+                exclusive = true
+            }
+            ...linters
+            ["postlint"] {
+                check = "echo postlint"
+                exclusive = true
+            }
+        }
+    }
+    ["pre-push"] {
+        steps = linters
+    }
+    ["check"] {
+        steps = linters
+    }
+    ["fix"] {
+        fix = true
+        steps = linters
+    }
+}
+
+warnings = List("missing-profiles")
+```

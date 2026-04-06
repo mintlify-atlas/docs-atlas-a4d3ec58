@@ -1,0 +1,342 @@
+---
+title: "Hooks"
+description: "How hk executes git hooks, the read/write locking model, and a reference for every supported hook type and step property."
+---
+
+hk wraps git hooks and runs their configured steps as fast as possible using a read/write locking model. Each step declares whether it reads or writes files, and hk schedules them concurrently while preventing conflicting operations from overlapping.
+
+## Hook execution flow
+
+When a hook runs with `fix = true`, hk performs the following sequence:
+
+<Steps>
+  <Step title="Stash unstaged changes">
+    Unstaged and untracked changes are stashed so the linters only see staged content. Disable with `stash = "none"`.
+  </Step>
+  <Step title="Gather files">
+    hk collects the list of staged files (or all files when running `hk run pre-commit --all`) and filters them against each step's `glob` patterns.
+  </Step>
+  <Step title="Run steps in parallel">
+    Steps run concurrently up to `HK_JOBS` at a time. hk creates per-file read/write locks based on each step's glob patterns:
+
+    - **Check steps** acquire read locks — multiple check steps on the same file run simultaneously.
+    - **Fix steps** acquire write locks — a fix step blocks other steps on the same file until it completes.
+    - If `check_first = true` (the default), hk runs the check command first with read locks. Only if it fails does hk acquire write locks and run the fix command.
+    - If `check_list_files` is defined, hk uses its output to acquire write locks only for files that actually need fixing.
+    - If `check_diff` is defined, hk attempts to apply the diff output directly with `git apply` instead of running the fix command.
+    - `exclusive = true` steps wait for all previous steps to finish and block later steps from starting.
+  </Step>
+  <Step title="Stage modified files">
+    Files modified by fix steps that match the step's `stage` globs (defaults to the step's `glob`) are added to the git index.
+  </Step>
+  <Step title="Unstash">
+    The stashed changes are restored.
+  </Step>
+</Steps>
+
+When `fix = false`, hk only runs check steps and skips the locking machinery entirely.
+
+## Supported hooks
+
+<AccordionGroup>
+  <Accordion title="pre-commit">
+    Runs before `git commit` creates the commit. This is the most common hook — use it for formatting and linting staged files.
+
+    ```pkl
+    hooks {
+        ["pre-commit"] {
+            fix = true
+            stash = "git"
+            steps {
+                ["cargo-fmt"] {
+                    glob = "**/*.rs"
+                    check_first = true
+                    check = "cargo fmt --check"
+                    fix = "cargo fmt"
+                }
+                ["cargo-clippy"] {
+                    glob = "**/*.rs"
+                    check_first = true
+                    check = "cargo clippy"
+                    fix = "cargo clippy --fix --allow-dirty --allow-staged"
+                }
+            }
+        }
+    }
+    ```
+
+    You can also use prelint and postlint bookend steps with `exclusive = true` to sequence work:
+
+    ```pkl
+    hooks {
+        ["pre-commit"] {
+            fix = true
+            stash = "git"
+            steps {
+                ["prelint"] {
+                    check = "mise run prelint"
+                    exclusive = true
+                }
+                ...linters
+                ["postlint"] {
+                    check = "mise run postlint"
+                    exclusive = true
+                }
+            }
+        }
+    }
+    ```
+  </Accordion>
+  <Accordion title="prepare-commit-msg">
+    Runs before the commit message editor opens. Useful for rendering a default commit message template.
+
+    The `{{commit_msg_file}}` template variable contains the path to the commit message file.
+
+    ```pkl
+    hooks {
+        ["prepare-commit-msg"] {
+            steps {
+                ["render-commit-msg"] {
+                    check = "echo 'default commit message' > {{commit_msg_file}}"
+                }
+            }
+        }
+    }
+    ```
+  </Accordion>
+  <Accordion title="commit-msg">
+    Runs after the commit message is created. Useful for validating that commit messages follow a convention.
+
+    The `{{commit_msg_file}}` template variable contains the path to the commit message file.
+
+    ```pkl
+    hooks {
+        ["commit-msg"] {
+            steps {
+                ["validate-commit-msg"] {
+                    check = "grep -q '^(fix|feat|chore):' {{commit_msg_file}} || exit 1"
+                }
+            }
+        }
+    }
+    ```
+
+    You can also use `Builtins.check_conventional_commit` for this:
+
+    ```pkl
+    import "package://github.com/jdx/hk/releases/download/v1.41.0/hk@1.41.0#/Builtins.pkl"
+
+    hooks {
+        ["commit-msg"] {
+            steps {
+                ["check-conventional-commit"] = Builtins.check_conventional_commit
+            }
+        }
+    }
+    ```
+  </Accordion>
+  <Accordion title="pre-push">
+    Runs before `git push`. Use it for slower checks that are too expensive to run on every commit.
+
+    ```pkl
+    hooks {
+        ["pre-push"] {
+            steps = linters
+        }
+    }
+    ```
+
+    Because `fix` is not set (defaults to `false`), hk runs only check steps and skips all write locking — making pre-push faster than pre-commit.
+  </Accordion>
+  <Accordion title="fix and check (special hooks)">
+    `fix` and `check` are not git hooks — they are special hooks for the `hk fix` and `hk check` commands. Define them to enable manual linting runs outside of git.
+
+    ```pkl
+    hooks {
+        ["fix"] {
+            fix = true
+            steps = linters
+        }
+        ["check"] {
+            steps = linters
+            // optional: upload timing data after the run
+            report = #"node scripts/upload-timings.js <<<"$HK_REPORT_JSON""#
+        }
+    }
+    ```
+
+    Run them with:
+
+    ```bash
+    hk fix          # run fix steps on all files
+    hk check        # run check steps on all files
+    hk check --all  # check every file, not just staged ones
+    ```
+  </Accordion>
+</AccordionGroup>
+
+hk also supports all other standard git hooks. See the [git documentation](https://git-scm.com/book/en/v2/Customizing-Git-Git-Hooks) for the full list.
+
+## Step properties
+
+Steps are configured as entries in a `Mapping<String, Step>` inside a hook's `steps` field. Every property is optional unless noted.
+
+<AccordionGroup>
+  <Accordion title="check">
+    A read-only command to validate files. Should exit non-zero if there are errors. Runs with read locks; multiple check steps can run simultaneously on the same file.
+
+    ```pkl
+    check = "eslint {{files}}"
+    ```
+
+    **Template variables:** `{{files}}`, `{{workspace}}`, `{{workspace_indicator}}`, `{{workspace_files}}`
+  </Accordion>
+  <Accordion title="fix">
+    A command that modifies files in place. Runs with write locks. When `check_first = true` (the default), hk only runs fix if the check command fails first.
+
+    ```pkl
+    fix = "eslint --fix {{files}}"
+    ```
+  </Accordion>
+  <Accordion title="check_diff">
+    A command that outputs a unified diff of what would be changed. hk attempts to apply it with `git apply` instead of running the fix command — more efficient for tools like `black`, `ruff`, and `shfmt`.
+
+    ```pkl
+    check_diff = "black --check --diff {{files}}"
+    ```
+  </Accordion>
+  <Accordion title="check_list_files">
+    A command that returns the list of files that need fixing. Used with `check_first` to acquire write locks only for files that actually need changes.
+
+    ```pkl
+    check_list_files = "prettier --list-different {{files}}"
+    ```
+  </Accordion>
+  <Accordion title="glob">
+    File patterns (glob or regex) the step runs on. Only staged files matching these patterns are passed to the step. If unset, the step always runs.
+
+    ```pkl
+    glob = List("**/*.js", "**/*.ts")
+    ```
+  </Accordion>
+  <Accordion title="batch">
+    **Default:** `false`
+
+    When `true`, hk splits the file list into batches and runs them in parallel. Useful for single-threaded tools like eslint and prettier.
+
+    ```pkl
+    batch = true
+    ```
+  </Accordion>
+  <Accordion title="check_first">
+    **Default:** `true`
+
+    When `true`, hk runs the check command first with read locks. If it fails, hk acquires write locks and runs the fix command. Set to `false` to always run fix directly — avoid this when possible as it hurts parallelism.
+
+    ```pkl
+    check_first = false
+    ```
+  </Accordion>
+  <Accordion title="exclusive">
+    **Default:** `false`
+
+    When `true`, this step waits for all previous steps to complete before starting, and no subsequent steps start until this one finishes. Useful for bookend steps that must run in isolation.
+
+    ```pkl
+    exclusive = true
+    ```
+  </Accordion>
+  <Accordion title="depends">
+    A step name or list of step names that must complete before this step starts.
+
+    ```pkl
+    depends = List("prettier")
+    // or a single string:
+    depends = "prettier"
+    ```
+  </Accordion>
+  <Accordion title="profiles">
+    A list of profile names that must be active for this step to run. Prefix with `!` to disable the step when a profile is active.
+
+    ```pkl
+    profiles = List("slow")         // only run when "slow" profile is active
+    profiles = List("!slow")        // skip when "slow" profile is active
+    ```
+
+    Enable profiles with `HK_PROFILE=slow` or via `git config hk.profile slow`.
+  </Accordion>
+  <Accordion title="workspace_indicator">
+    When set, hk groups files by the nearest parent directory containing this filename, then runs the step once per matching workspace.
+
+    ```pkl
+    workspace_indicator = "Cargo.toml"
+    check = "cargo clippy --manifest-path {{workspace_indicator}}"
+    ```
+
+    Additional template variables become available: `{{workspace}}`, `{{workspace_indicator}}`, `{{workspace_files}}`.
+  </Accordion>
+  <Accordion title="env">
+    Environment variables scoped to this step.
+
+    ```pkl
+    env {
+        ["NODE_ENV"] = "production"
+    }
+    ```
+  </Accordion>
+  <Accordion title="condition / step_condition">
+    An [expr](https://github.com/jdx/expr-rs) expression that controls whether the step runs.
+
+    - `condition` is evaluated per job (once per batch or workspace).
+    - `step_condition` is evaluated once for the entire step.
+
+    ```pkl
+    condition = "git.staged_files != []"
+    step_condition = "exec('test -f .eslintrc.json')"
+    ```
+  </Accordion>
+  <Accordion title="dir">
+    Run the step's commands in this directory instead of the repository root.
+
+    ```pkl
+    dir = "frontend"
+    ```
+  </Accordion>
+  <Accordion title="prefix">
+    Prepend this string to all step commands.
+
+    ```pkl
+    prefix = "bun run"
+    ```
+  </Accordion>
+  <Accordion title="stage">
+    Glob patterns of files to stage after running a fix command. Defaults to the step's `glob` when staging is enabled.
+
+    ```pkl
+    stage = List("*.js", "*.ts")
+    ```
+  </Accordion>
+  <Accordion title="stomp">
+    **Default:** `false`
+
+    When `true`, hk acquires a write lock immediately instead of attempting a read lock first. Use for tools that have their own internal locking.
+
+    ```pkl
+    stomp = true
+    ```
+  </Accordion>
+  <Accordion title="output_summary">
+    **Default:** `"stderr"`
+
+    Controls which output stream is captured and printed after the hook run.
+
+    - `"stderr"` — capture only stderr (default)
+    - `"stdout"` — capture only stdout
+    - `"combined"` — capture both streams interleaved
+    - `"hide"` — suppress all output for this step
+
+    ```pkl
+    output_summary = "combined"
+    ```
+  </Accordion>
+</AccordionGroup>

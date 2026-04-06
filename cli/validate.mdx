@@ -1,0 +1,53 @@
+---
+title: "hk validate"
+description: "Validate the hk.pkl configuration file for errors."
+---
+
+**Usage**: `hk validate`
+
+`hk validate` parses and validates your `hk.pkl` configuration file, reporting any errors or misconfigurations. It exits with a non-zero status if the configuration is invalid, making it safe to use in CI.
+
+## What it checks
+
+- The `hk.pkl` file exists and is valid Pkl syntax.
+- The file correctly amends the hk `Config.pkl` schema.
+- All referenced built-in names exist in `Builtins.pkl`.
+- Step fields (`check`, `fix`, `glob`, `batch`, etc.) have the correct types.
+- Hook names are valid git hook names or recognized custom hooks (`check`, `fix`).
+
+## Example output
+
+When the configuration is valid:
+
+```bash
+$ hk validate
+✓ hk.pkl is valid
+```
+
+When the configuration has errors:
+
+```bash
+$ hk validate
+error: unknown builtin 'esint' in step 'eslint'
+  --> hk.pkl:8:22
+  |
+8 |       ["eslint"] = Builtins.esint
+  |                             ^^^^^ did you mean 'eslint'?
+```
+
+## When to use
+
+<Tip>
+  Run `hk validate` in CI before any hook steps to catch configuration regressions early — for example, after a developer edits `hk.pkl` and opens a pull request.
+</Tip>
+
+```yaml .github/workflows/ci.yml (example)
+- name: Validate hk config
+  run: hk validate
+```
+
+You can also run it locally after editing `hk.pkl` to confirm the changes are correct before committing:
+
+```bash
+hk validate && git add hk.pkl && git commit -m "chore: update hk.pkl"
+```

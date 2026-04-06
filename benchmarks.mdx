@@ -1,0 +1,93 @@
+---
+title: "Benchmarks"
+description: "Performance comparison of hk, lefthook, pre-commit, and prek running 10 linters on a synthetic project."
+---
+
+These benchmarks compare hk, lefthook, pre-commit, and prek running 10 linters on a synthetic project.
+
+hk is the only tool that runs linters in parallel **and** safely. See [Why hk?](/why-hk) for background on how hk achieves this with file-level read/write locks.
+
+## Setup
+
+The benchmark uses a synthetic project with **~6,000 files** across multiple languages:
+
+- 4,000 Python, 500 JavaScript/TypeScript, 500 JSON, 500 Shell, 250 YAML, 200 CSS, 200 Markdown
+
+### Linters
+
+Ten linters with overlapping file coverage are configured:
+
+| Linter               | Files                      | How hk avoids write locks                             |
+| -------------------- | -------------------------- | ----------------------------------------------------- |
+| prettier             | `*.{js,ts,css,md}`         | `check_list_files` — only locks files that need fixing |
+| eslint               | `*.{js,ts}`                | Falls back to write lock (no diff or list mode)       |
+| black                | `*.py`                     | `check_diff` — hk applies the diff itself             |
+| ruff check           | `*.py`                     | Check only — read lock                                |
+| ruff format          | `*.py`                     | `check_diff` — hk applies the diff itself             |
+| jq                   | `*.json`                   | `check_diff`                                          |
+| yq                   | `*.{yml,yaml}`             | `check_diff`                                          |
+| shfmt                | `*.{sh,bash}`              | `check_diff`                                          |
+| trailing-whitespace  | `**/*` (all files)         | `check_diff` via `hk util` (built-in Rust)            |
+| newlines             | `**/*` (all files)         | `check_diff` via `hk util` (built-in Rust)            |
+
+`trailing-whitespace` and `newlines` use `**/*` globs — they overlap with every other linter. This is the most adversarial case for parallel execution.
+
+### Why other tools run sequentially
+
+<Note>
+  lefthook supports `parallel: true`, but it has no file-level coordination. If two parallel jobs modify the same file, the last writer wins and the other's changes are silently lost. For a fair and **correct** comparison, lefthook is run in its safe sequential mode — the only mode that avoids race conditions. pre-commit and prek always run hooks sequentially.
+</Note>
+
+## Results
+
+hk's parallel execution produces a significant speedup over sequential tools. The exact numbers depend on hardware (number of cores, I/O speed) and the mix of linters, but you can expect hk to be several times faster on a multi-core machine when linters are I/O or CPU bound.
+
+Key points from the benchmark:
+
+- **All files (~1,750 matched files, 10 linters)** — hk's parallelism provides the largest advantage because the total work is spread across cores simultaneously.
+- **Staged changes (~50 files)** — speedup is smaller but still meaningful; hk avoids unnecessary work through smart file filtering.
+
+To see live benchmark numbers, run the benchmarks locally using the steps below.
+
+## Reproducing the benchmarks
+
+Everything is in the `benchmark/` directory of the hk repository.
+
+### Prerequisites
+
+```bash
+mise use hyperfine lefthook prettier eslint shfmt jq yq
+uv tool install pre-commit prek black ruff
+```
+
+### Generate and run
+
+<Steps>
+  <Step title="Generate a synthetic project">
+    ```bash
+    benchmark/generate-project.sh /tmp/hk-bench
+    ```
+
+    You can customize the file counts with environment variables:
+
+    ```bash
+    NUM_JS=500 NUM_PY=500 benchmark/generate-project.sh /tmp/hk-bench
+    ```
+  </Step>
+
+  <Step title="Run the benchmarks">
+    ```bash
+    benchmark/run.sh /tmp/hk-bench
+    ```
+
+    Customize the number of runs and warmup iterations:
+
+    ```bash
+    RUNS=20 WARMUP=3 benchmark/run.sh /tmp/hk-bench
+    ```
+  </Step>
+
+  <Step title="Review the results">
+    Results are saved as JSON in `benchmark/results/`. A chart image and data file are also generated in `docs/public/` for the documentation site.
+  </Step>
+</Steps>

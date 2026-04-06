@@ -1,0 +1,90 @@
+---
+title: "hk install"
+description: "Install git hooks from hk.pkl into .git/hooks/."
+---
+
+**Usage**: `hk install [--mise]`
+
+**Alias**: `i`
+
+`hk install` writes hook scripts into your repository's `.git/hooks/` directory so that hk runs automatically when git triggers a hook event. It reads `hk.pkl` to determine which hooks to install (e.g. `pre-commit`, `pre-push`, `commit-msg`).
+
+In a git worktree that has a per-worktree `core.hooksPath` configured, hooks are installed to that worktree-local directory. Otherwise they go to the shared hooks directory.
+
+## Flags
+
+<ParamField query="--mise" type="boolean">
+  Generate hook scripts that invoke hk via `mise x` instead of calling `hk` directly. This ensures tools managed by mise are available when hooks run, even if mise is not activated in the current shell session.
+
+  Set `HK_MISE=1` to make this the default for all `hk install` invocations.
+</ParamField>
+
+## What gets installed
+
+For each hook name defined in `hk.pkl`, hk writes a shell script at `.git/hooks/<hook-name>`. For example, if your `hk.pkl` defines a `pre-commit` hook, hk writes `.git/hooks/pre-commit`:
+
+```bash .git/hooks/pre-commit
+#!/bin/sh
+hk run pre-commit "$@"
+```
+
+With `--mise`, the script uses `mise x` to ensure tools are resolved:
+
+```bash .git/hooks/pre-commit (with --mise)
+#!/bin/sh
+mise x -- hk run pre-commit "$@"
+```
+
+## Uninstalling hooks
+
+To remove hk's hooks from `.git/hooks/`, run:
+
+```bash
+hk uninstall
+```
+
+This deletes the hook scripts that hk previously installed. It does not remove `hk.pkl`.
+
+## Examples
+
+<CodeGroup>
+
+```bash Standard install
+hk install
+```
+
+```bash Install with mise support
+hk install --mise
+```
+
+```bash Remove installed hooks
+hk uninstall
+```
+
+</CodeGroup>
+
+## Typical setup workflow
+
+<Steps>
+  <Step title="Create hk.pkl">
+    ```bash
+    hk init
+    ```
+  </Step>
+  <Step title="Install hooks">
+    ```bash
+    hk install
+    ```
+    Hook scripts are written to `.git/hooks/`.
+  </Step>
+  <Step title="Verify">
+    ```bash
+    ls -la .git/hooks/
+    ```
+    You should see executable scripts for each hook defined in `hk.pkl`.
+  </Step>
+</Steps>
+
+<Note>
+  Commit `hk.pkl` to your repository so your team can run `hk install` after cloning to get the same hooks.
+</Note>

@@ -1,0 +1,95 @@
+---
+title: "CLI overview"
+description: "Reference for the hk command-line interface and its global flags."
+---
+
+`hk` is a high-performance git hook manager written in Rust. It runs linters, formatters, and other checks concurrently against your staged or changed files, and installs those checks as git hooks so they run automatically on commit and push.
+
+**Usage**: `hk [FLAGS] <SUBCOMMAND>`
+
+**Version**: 1.41.0
+
+## Global flags
+
+These flags are available on every `hk` subcommand.
+
+<ParamField query="-j, --jobs" type="number">
+  Number of jobs to run in parallel. Defaults to the number of logical CPU cores.
+</ParamField>
+
+<ParamField query="-p, --profile" type="string[]">
+  Profiles to enable or disable. Prefix a profile name with `!` to disable it.
+
+  ```bash
+  hk check --profile slow --profile !fast
+  ```
+</ParamField>
+
+<ParamField query="-s, --slow" type="boolean">
+  Shorthand for `--profile=slow`. Enables steps tagged with the `slow` profile.
+</ParamField>
+
+<ParamField query="-v, --verbose" type="boolean">
+  Enables verbose output. Can be repeated for more verbosity (e.g. `-vv`).
+</ParamField>
+
+<ParamField query="-n, --no-progress" type="boolean">
+  Disables the live progress display.
+</ParamField>
+
+<ParamField query="-q, --quiet" type="boolean">
+  Suppresses informational output. Errors are still shown.
+</ParamField>
+
+<ParamField query="--silent" type="boolean">
+  Suppresses all output, including errors.
+</ParamField>
+
+<ParamField query="--trace" type="boolean">
+  Enables tracing spans and performance diagnostics.
+</ParamField>
+
+<ParamField query="--json" type="boolean">
+  Output in JSON format where supported.
+</ParamField>
+
+## Subcommands
+
+<CardGroup cols={2}>
+  <Card title="hk check" icon="circle-check" href="/cli/check">
+    Run linters in read-only check mode against staged or specified files.
+  </Card>
+  <Card title="hk fix" icon="wrench" href="/cli/fix">
+    Run linters and auto-fix issues in staged or specified files.
+  </Card>
+  <Card title="hk run" icon="play" href="/cli/run">
+    Explicitly run a named git hook (pre-commit, pre-push, commit-msg, prepare-commit-msg).
+  </Card>
+  <Card title="hk init" icon="file-plus" href="/cli/init">
+    Generate an `hk.pkl` configuration file in the project root.
+  </Card>
+  <Card title="hk install" icon="download" href="/cli/install">
+    Install git hooks from `hk.pkl` into `.git/hooks/`.
+  </Card>
+  <Card title="hk validate" icon="shield-check" href="/cli/validate">
+    Validate the `hk.pkl` configuration file for errors.
+  </Card>
+  <Card title="hk config" icon="sliders" href="/cli/config">
+    Inspect and introspect the effective merged configuration.
+  </Card>
+  <Card title="hk util" icon="toolbox" href="/cli/util">
+    Built-in Rust-native utility commands for common file checks and fixes.
+  </Card>
+</CardGroup>
+
+### Additional subcommands
+
+| Command | Description |
+|---------|-------------|
+| `hk builtins` | List all available built-in linter definitions. |
+| `hk cache clear` | Clear the hk cache. |
+| `hk completion <SHELL>` | Generate shell completion scripts. |
+| `hk migrate pre-commit` | Migrate an existing `.pre-commit-config.yaml` to `hk.pkl`. |
+| `hk test` | Run built-in step tests defined in `hk.pkl`. |
+| `hk uninstall` | Remove hk git hooks from `.git/hooks/`. |
+| `hk version` | Print the hk version. |

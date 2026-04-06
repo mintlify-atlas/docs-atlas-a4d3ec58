@@ -1,0 +1,358 @@
+---
+title: "hk util"
+description: "Built-in Rust-native utility commands for common file checks and fixes."
+---
+
+**Usage**: `hk util <SUBCOMMAND>`
+
+`hk util` provides a collection of built-in, dependency-free utility commands implemented directly in Rust. These commands are suitable for use as step commands in `hk.pkl` without requiring any external tools to be installed.
+
+They are designed to be drop-in replacements for the most common [pre-commit](https://pre-commit.com/) hooks.
+
+## Using util commands in hk.pkl
+
+Reference `hk util` commands directly in your step definitions:
+
+```pkl hk.pkl
+amends "package://github.com/jdx/hk/releases/download/v1.41.0/hk@1.41.0#/Config.pkl"
+
+hooks {
+  ["pre-commit"] {
+    steps {
+      ["no-commit-to-main"] {
+        check = "hk util no-commit-to-branch --branch main --branch master"
+      }
+      ["eof-fixer"] {
+        glob = List("**/*")
+        fix = "hk util end-of-file-fixer --fix {{files}}"
+        check = "hk util end-of-file-fixer {{files}}"
+      }
+      ["large-files"] {
+        glob = List("**/*")
+        check = "hk util check-added-large-files --maxkb 1000 {{files}}"
+      }
+    }
+  }
+}
+```
+
+## Subcommands
+
+<AccordionGroup>
+
+  <Accordion title="check-added-large-files">
+    **Usage**: `hk util check-added-large-files [--maxkb <MAXKB>] <FILES>…`
+
+    Check that no files exceed a maximum size. Fails if any file is larger than the threshold.
+
+    <ParamField query="--maxkb" type="number" default="500">
+      Maximum allowed file size in kilobytes.
+    </ParamField>
+
+    <ParamField body="FILES" type="string[]" required>
+      Files to check.
+    </ParamField>
+
+    ```bash
+    # Check with default 500 KB limit
+    hk util check-added-large-files src/assets/logo.png
+
+    # Check with a custom limit
+    hk util check-added-large-files --maxkb 1000 dist/bundle.js
+    ```
+  </Accordion>
+
+  <Accordion title="check-byte-order-marker">
+    **Usage**: `hk util check-byte-order-marker [-d --diff] <FILES>…`
+
+    Check for UTF-8 byte order markers (BOM). BOMs are unnecessary in UTF-8 and can cause issues in some tools.
+
+    <ParamField query="-d, --diff" type="boolean">
+      Output a diff showing where BOMs were found.
+    </ParamField>
+
+    <ParamField body="FILES" type="string[]" required>
+      Files to check.
+    </ParamField>
+
+    ```bash
+    hk util check-byte-order-marker src/main.py
+    hk util check-byte-order-marker --diff src/**/*.py
+    ```
+  </Accordion>
+
+  <Accordion title="check-case-conflict">
+    **Usage**: `hk util check-case-conflict <FILES>…`
+
+    Check for files whose names conflict on case-insensitive filesystems (e.g. macOS, Windows). Detects pairs like `Readme.md` and `README.md`.
+
+    <ParamField body="FILES" type="string[]" required>
+      Files to check.
+    </ParamField>
+
+    ```bash
+    hk util check-case-conflict src/**/*
+    ```
+  </Accordion>
+
+  <Accordion title="check-conventional-commit">
+    **Usage**: `hk util check-conventional-commit [--allowed-types… <ALLOWED_TYPES>] <COMMIT_MSG_FILE>`
+
+    Validate that a commit message follows the [Conventional Commits](https://www.conventionalcommits.org/) specification.
+
+    <ParamField query="--allowed-types" type="string[]" default="build,chore,ci,docs,feat,fix,perf,refactor,revert,style,test">
+      Comma-separated list of allowed commit types. Can be specified multiple times.
+    </ParamField>
+
+    <ParamField body="COMMIT_MSG_FILE" type="string" required>
+      Path to the file containing the commit message to validate.
+    </ParamField>
+
+    ```bash
+    # Validate with default allowed types
+    hk util check-conventional-commit .git/COMMIT_EDITMSG
+
+    # Validate with custom allowed types
+    hk util check-conventional-commit \
+      --allowed-types feat \
+      --allowed-types fix \
+      --allowed-types chore \
+      .git/COMMIT_EDITMSG
+    ```
+  </Accordion>
+
+  <Accordion title="check-executables-have-shebangs">
+    **Usage**: `hk util check-executables-have-shebangs <FILES>…`
+
+    Check that all executable files have a shebang line (`#!`) as their first line.
+
+    <ParamField body="FILES" type="string[]" required>
+      Files to check.
+    </ParamField>
+
+    ```bash
+    hk util check-executables-have-shebangs bin/* scripts/*
+    ```
+  </Accordion>
+
+  <Accordion title="check-merge-conflict">
+    **Usage**: `hk util check-merge-conflict [--assume-in-merge] <FILES>…`
+
+    Check for unresolved merge conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`).
+
+    <ParamField query="--assume-in-merge" type="boolean">
+      Run the check even when not currently in a merge state.
+    </ParamField>
+
+    <ParamField body="FILES" type="string[]" required>
+      Files to check.
+    </ParamField>
+
+    ```bash
+    hk util check-merge-conflict src/**/*.rs
+    hk util check-merge-conflict --assume-in-merge src/conflicted.rs
+    ```
+  </Accordion>
+
+  <Accordion title="check-symlinks">
+    **Usage**: `hk util check-symlinks <FILES>…`
+
+    Check for broken symbolic links — symlinks that point to a path that does not exist.
+
+    <ParamField body="FILES" type="string[]" required>
+      Files to check.
+    </ParamField>
+
+    ```bash
+    hk util check-symlinks **/*
+    ```
+  </Accordion>
+
+  <Accordion title="detect-private-key">
+    **Usage**: `hk util detect-private-key <FILES>…`
+
+    Scan files for private key material (PEM blocks, SSH keys, etc.) and fail if any is found.
+
+    <ParamField body="FILES" type="string[]" required>
+      Files to scan.
+    </ParamField>
+
+    ```bash
+    hk util detect-private-key **/*
+    ```
+  </Accordion>
+
+  <Accordion title="end-of-file-fixer">
+    **Usage**: `hk util end-of-file-fixer [-d --diff] [-f --fix] <FILES>…`
+
+    Check that files end with exactly one newline, and optionally fix them.
+
+    <ParamField query="-d, --diff" type="boolean">
+      Output a diff of the change. Cannot be used with `--fix`.
+    </ParamField>
+
+    <ParamField query="-f, --fix" type="boolean">
+      Fix files to end with exactly one newline.
+    </ParamField>
+
+    <ParamField body="FILES" type="string[]" required>
+      Files to check or fix.
+    </ParamField>
+
+    ```bash
+    # Check only
+    hk util end-of-file-fixer src/**/*.rs
+
+    # Show diff
+    hk util end-of-file-fixer --diff src/**/*.rs
+
+    # Fix in place
+    hk util end-of-file-fixer --fix src/**/*.rs
+    ```
+  </Accordion>
+
+  <Accordion title="fix-byte-order-marker">
+    **Usage**: `hk util fix-byte-order-marker <FILES>…`
+
+    Remove UTF-8 byte order markers from files.
+
+    <ParamField body="FILES" type="string[]" required>
+      Files to fix.
+    </ParamField>
+
+    ```bash
+    hk util fix-byte-order-marker src/**/*.py
+    ```
+  </Accordion>
+
+  <Accordion title="fix-smart-quotes">
+    **Usage**: `hk util fix-smart-quotes [--check] [-d --diff] <FILES>…`
+
+    Replace UTF-8 smart (curly) quotes with their ASCII equivalents.
+
+    <ParamField query="--check" type="boolean">
+      Check for smart quotes without modifying files.
+    </ParamField>
+
+    <ParamField query="-d, --diff" type="boolean">
+      Output a diff of the change. Implies `--check`.
+    </ParamField>
+
+    <ParamField body="FILES" type="string[]" required>
+      Files to check or fix.
+    </ParamField>
+
+    ```bash
+    # Fix in place (default behavior)
+    hk util fix-smart-quotes docs/**/*.md
+
+    # Check without fixing
+    hk util fix-smart-quotes --check docs/**/*.md
+
+    # Show diff
+    hk util fix-smart-quotes --diff docs/**/*.md
+    ```
+  </Accordion>
+
+  <Accordion title="mixed-line-ending">
+    **Usage**: `hk util mixed-line-ending [-d --diff] [-f --fix] <FILES>…`
+
+    Detect files that contain mixed line endings (both CRLF and LF), and optionally normalize them to LF.
+
+    <ParamField query="-d, --diff" type="boolean">
+      Output a diff of the change. Cannot be used with `--fix`.
+    </ParamField>
+
+    <ParamField query="-f, --fix" type="boolean">
+      Normalize line endings to LF.
+    </ParamField>
+
+    <ParamField body="FILES" type="string[]" required>
+      Files to check or fix.
+    </ParamField>
+
+    ```bash
+    # Check for mixed line endings
+    hk util mixed-line-ending src/**/*.ts
+
+    # Fix mixed line endings
+    hk util mixed-line-ending --fix src/**/*.ts
+    ```
+  </Accordion>
+
+  <Accordion title="no-commit-to-branch">
+    **Usage**: `hk util no-commit-to-branch [--branch… <BRANCH>]`
+
+    Prevent commits directly to protected branches. Exits with an error if the current branch matches any of the specified names.
+
+    <ParamField query="--branch" type="string[]">
+      Branch names to protect. Defaults to `main` and `master`. Can be specified multiple times.
+    </ParamField>
+
+    ```bash
+    # Protect main and master (default)
+    hk util no-commit-to-branch
+
+    # Protect a custom set of branches
+    hk util no-commit-to-branch --branch main --branch develop --branch production
+    ```
+  </Accordion>
+
+  <Accordion title="python-check-ast">
+    **Usage**: `hk util python-check-ast <FILES>…`
+
+    Parse Python files and check for syntax errors by validating their abstract syntax tree (AST). Does not require Python to be installed — parsing is done in Rust.
+
+    <ParamField body="FILES" type="string[]" required>
+      Python files to check.
+    </ParamField>
+
+    ```bash
+    hk util python-check-ast src/**/*.py
+    ```
+  </Accordion>
+
+  <Accordion title="python-debug-statements">
+    **Usage**: `hk util python-debug-statements <FILES>…`
+
+    Check Python files for debug statements (`import pdb`, `breakpoint()`, `import ipdb`, etc.) that should not be committed.
+
+    <ParamField body="FILES" type="string[]" required>
+      Python files to check.
+    </ParamField>
+
+    ```bash
+    hk util python-debug-statements src/**/*.py
+    ```
+  </Accordion>
+
+  <Accordion title="trailing-whitespace">
+    **Usage**: `hk util trailing-whitespace [-d --diff] [-f --fix] <FILES>…`
+
+    Check for trailing whitespace on lines, and optionally remove it.
+
+    <ParamField query="-d, --diff" type="boolean">
+      Output a diff of the change. Cannot be used with `--fix`.
+    </ParamField>
+
+    <ParamField query="-f, --fix" type="boolean">
+      Remove trailing whitespace from lines.
+    </ParamField>
+
+    <ParamField body="FILES" type="string[]" required>
+      Files to check or fix.
+    </ParamField>
+
+    ```bash
+    # Check only
+    hk util trailing-whitespace src/**/*.rs
+
+    # Show diff
+    hk util trailing-whitespace --diff src/**/*.rs
+
+    # Fix in place
+    hk util trailing-whitespace --fix src/**/*.rs
+    ```
+  </Accordion>
+
+</AccordionGroup>

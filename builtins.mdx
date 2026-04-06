@@ -1,0 +1,347 @@
+---
+title: "Built-in linters"
+description: "120+ pre-configured linters and formatters available through the Builtins module — ready to use with a single import."
+---
+
+hk ships with over 120 pre-configured linters and formatters through the `Builtins` module. Each builtin is a production-ready `Step` definition you can use as-is or customize with Pkl's amend syntax.
+
+## Importing and using builtins
+
+Add the `Builtins` import to your `hk.pkl`, then reference builtins by name:
+
+```pkl hk.pkl
+amends "package://github.com/jdx/hk/releases/download/v1.41.0/hk@1.41.0#/Config.pkl"
+import "package://github.com/jdx/hk/releases/download/v1.41.0/hk@1.41.0#/Builtins.pkl"
+
+hooks {
+    ["pre-commit"] {
+        fix = true
+        stash = "git"
+        steps {
+            ["prettier"] = Builtins.prettier
+            ["eslint"] = Builtins.eslint
+            ["cargo-fmt"] = Builtins.cargo_fmt
+            ["gitleaks"] = Builtins.gitleaks
+        }
+    }
+}
+```
+
+## Customizing builtins
+
+Use Pkl's amend syntax — `(Builtins.name) { ... }` — to override any property while keeping the rest of the builtin's defaults.
+
+<AccordionGroup>
+  <Accordion title="Override glob patterns">
+    ```pkl
+    ["prettier"] = (Builtins.prettier) {
+        // restrict to only JS/TS files in src/
+        glob = List("src/**/*.js", "src/**/*.ts")
+    }
+    ```
+  </Accordion>
+  <Accordion title="Toggle batch processing">
+    ```pkl
+    ["eslint"] = (Builtins.eslint) {
+        batch = false  // disable parallel batching
+    }
+    ```
+  </Accordion>
+  <Accordion title="Add environment variables">
+    ```pkl
+    ["prettier"] = (Builtins.prettier) {
+        env {
+            ["PRETTIER_CONFIG"] = ".prettierrc.json"
+        }
+    }
+    ```
+  </Accordion>
+  <Accordion title="Add dependencies">
+    ```pkl
+    ["eslint"] = (Builtins.eslint) {
+        // run after prettier completes
+        depends = "prettier"
+    }
+    ```
+  </Accordion>
+  <Accordion title="Workspace-specific configuration">
+    ```pkl
+    ["cargo_clippy"] = (Builtins.cargo_clippy) {
+        // only run in directories with Cargo.toml
+        workspace_indicator = "Cargo.toml"
+        check = "cargo clippy --manifest-path {{workspace}}/Cargo.toml"
+    }
+    ```
+  </Accordion>
+  <Accordion title="Profile-based configuration">
+    ```pkl
+    ["mypy"] = (Builtins.mypy) {
+        // only run when the "python" profile is active
+        profiles = List("python")
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Available builtins
+
+### JavaScript / TypeScript
+
+| Builtin | Description |
+|---|---|
+| `Builtins.prettier` | Opinionated code formatter (JS, TS, CSS, HTML, JSON, YAML, Markdown, and more) |
+| `Builtins.eslint` | Pluggable JavaScript linter |
+| `Builtins.biome` | Fast formatter and linter (JS, TS, JSON) |
+| `Builtins.tsc` | TypeScript type checker |
+| `Builtins.deno` | Deno formatter and linter |
+| `Builtins.deno_check` | Deno type checker |
+| `Builtins.standard_js` | JavaScript Standard Style linter |
+| `Builtins.xo` | Opinionated ESLint wrapper |
+| `Builtins.knip` | Find unused exports, files, and dependencies |
+| `Builtins.knip_strict` | Knip with stricter settings |
+| `Builtins.ox_lint` | Fast JavaScript linter written in Rust |
+| `Builtins.sort_package_json` | Keep `package.json` keys sorted |
+| `Builtins.stylelint` | CSS/SCSS/Less linter |
+| `Builtins.astro` | Astro formatter |
+
+### Python
+
+| Builtin | Description |
+|---|---|
+| `Builtins.black` | Opinionated Python formatter |
+| `Builtins.ruff` | Fast Python linter |
+| `Builtins.ruff_format` | Fast Python formatter (ruff's formatter) |
+| `Builtins.mypy` | Static type checker for Python |
+| `Builtins.pylint` | Python linter |
+| `Builtins.flake8` | Python style guide enforcer |
+| `Builtins.isort` | Python import sorter |
+| `Builtins.python_check_ast` | Check Python files for valid AST |
+| `Builtins.python_debug_statements` | Detect leftover debug statements |
+| `Builtins.ty` | Extremely fast Python type checker |
+
+### Rust
+
+| Builtin | Description |
+|---|---|
+| `Builtins.cargo_fmt` | Rust code formatter |
+| `Builtins.cargo_clippy` | Rust linter |
+| `Builtins.cargo_check` | Rust compiler check (without clippy) |
+| `Builtins.rustfmt` | Rust formatter (direct rustfmt invocation) |
+
+### Go
+
+| Builtin | Description |
+|---|---|
+| `Builtins.go_fmt` | Go formatter |
+| `Builtins.go_fumpt` | Stricter Go formatter |
+| `Builtins.go_imports` | Go import organizer |
+| `Builtins.go_vet` | Go static analysis |
+| `Builtins.golangci_lint` | Go meta-linter |
+| `Builtins.go_sec` | Go security checker |
+| `Builtins.staticcheck` | Go static analysis tool |
+| `Builtins.revive` | Go linter |
+| `Builtins.go_lines` | Go line length checker |
+| `Builtins.gomod_tidy` | Keep `go.mod` tidy |
+| `Builtins.go_vuln_check` | Go vulnerability checker |
+
+### Ruby
+
+| Builtin | Description |
+|---|---|
+| `Builtins.rubocop` | Ruby linter and formatter |
+| `Builtins.standard_rb` | Ruby Standard Style linter |
+| `Builtins.reek` | Ruby code smell detector |
+| `Builtins.fasterer` | Ruby performance suggestions |
+| `Builtins.brakeman` | Ruby on Rails security scanner |
+| `Builtins.sorbet` | Ruby type checker |
+| `Builtins.bundle_audit` | Bundler dependency security audit |
+| `Builtins.erb` | ERB template linter |
+
+### Shell
+
+| Builtin | Description |
+|---|---|
+| `Builtins.shellcheck` | Shell script analyzer |
+| `Builtins.shfmt` | Shell script formatter |
+
+### Lua
+
+| Builtin | Description |
+|---|---|
+| `Builtins.selene` | Lua linter |
+| `Builtins.luacheck` | Lua static analysis |
+| `Builtins.stylua` | Lua formatter |
+
+### Nix
+
+| Builtin | Description |
+|---|---|
+| `Builtins.nix_fmt` | Nix formatter |
+| `Builtins.alejandra` | Opinionated Nix formatter |
+| `Builtins.nixpkgs_format` | nixpkgs code formatter |
+| `Builtins.deadnix` | Find and remove dead Nix code |
+| `Builtins.nixf_diagnose` | Nix language diagnostics |
+| `Builtins.nil` | Nix language server linting |
+
+### Elixir
+
+| Builtin | Description |
+|---|---|
+| `Builtins.mix_fmt` | Elixir code formatter |
+| `Builtins.mix_compile` | Elixir compilation check |
+| `Builtins.mix_test` | Run Elixir tests |
+
+### Kotlin / Java / Swift
+
+| Builtin | Description |
+|---|---|
+| `Builtins.ktlint` | Kotlin linter and formatter |
+| `Builtins.google_java_format` | Java formatter |
+| `Builtins.swiftlint` | Swift linter |
+
+### Terraform / Infrastructure
+
+| Builtin | Description |
+|---|---|
+| `Builtins.terraform` | Terraform formatter |
+| `Builtins.tf_lint` | Terraform linter |
+| `Builtins.tofu` | OpenTofu formatter |
+| `Builtins.hclfmt` | HCL formatter |
+
+### Data formats
+
+| Builtin | Description |
+|---|---|
+| `Builtins.taplo` | TOML linter |
+| `Builtins.taplo_format` | TOML formatter |
+| `Builtins.tombi` | TOML linter |
+| `Builtins.tombi_format` | TOML formatter |
+| `Builtins.yamllint` | YAML linter |
+| `Builtins.yamlfmt` | YAML formatter |
+| `Builtins.jq` | JSON formatter via jq |
+| `Builtins.yq` | YAML/JSON processor |
+| `Builtins.xmllint` | XML linter |
+| `Builtins.sql_fluff` | SQL linter and formatter |
+| `Builtins.pkl` | Pkl linter |
+| `Builtins.pkl_format` | Pkl formatter |
+
+### Documentation
+
+| Builtin | Description |
+|---|---|
+| `Builtins.markdown_lint` | Markdown linter |
+| `Builtins.rumdl` | Fast Markdown linter (Rust) |
+| `Builtins.vale` | Prose style checker |
+| `Builtins.lychee` | Link checker |
+| `Builtins.asciidoctor` | AsciiDoc processor check |
+| `Builtins.mdschema` | JSON Schema validation for Markdown frontmatter |
+
+### GitHub Actions / CI
+
+| Builtin | Description |
+|---|---|
+| `Builtins.actionlint` | GitHub Actions workflow linter |
+| `Builtins.ghalint_action` | GitHub Actions linter (action files) |
+| `Builtins.ghalint_workflow` | GitHub Actions linter (workflow files) |
+| `Builtins.zizmor` | GitHub Actions security analyzer |
+| `Builtins.pinact` | Pin GitHub Actions to specific commit SHAs |
+| `Builtins.pinact_update` | Update pinned GitHub Actions |
+
+### Docker / Containers
+
+| Builtin | Description |
+|---|---|
+| `Builtins.hadolint` | Dockerfile linter |
+| `Builtins.dclint` | Docker Compose linter |
+
+### C / C++
+
+| Builtin | Description |
+|---|---|
+| `Builtins.clang_format` | C/C++ formatter |
+| `Builtins.cpp_lint` | C++ style checker |
+| `Builtins.cmake_format` | CMake formatter |
+
+### Secrets and security
+
+| Builtin | Description |
+|---|---|
+| `Builtins.gitleaks` | Secret scanner for Git repositories |
+| `Builtins.betterleaks` | Enhanced secret scanner |
+| `Builtins.detect_private_key` | Detect committed private keys |
+
+### General / special purpose
+
+| Builtin | Description |
+|---|---|
+| `Builtins.trailing_whitespace` | Detect and remove trailing whitespace |
+| `Builtins.newlines` | Ensure files end with a newline |
+| `Builtins.check_merge_conflict` | Detect merge conflict markers |
+| `Builtins.check_conventional_commit` | Validate conventional commit messages |
+| `Builtins.check_added_large_files` | Prevent large files from being committed |
+| `Builtins.check_case_conflict` | Detect files that would conflict on case-insensitive filesystems |
+| `Builtins.check_symlinks` | Check for broken symlinks |
+| `Builtins.check_executables_have_shebangs` | Ensure executable scripts have shebangs |
+| `Builtins.no_commit_to_branch` | Prevent direct commits to protected branches |
+| `Builtins.mixed_line_ending` | Detect mixed line endings |
+| `Builtins.byte_order_marker` | Detect byte order markers |
+| `Builtins.fix_byte_order_marker` | Remove byte order markers |
+| `Builtins.check_byte_order_marker` | Check for byte order markers |
+| `Builtins.fix_smart_quotes` | Replace smart quotes with straight quotes |
+| `Builtins.editorconfig-checker` | Validate files against `.editorconfig` |
+| `Builtins.typos` | Fast spell checker for source code |
+| `Builtins.dprint` | Pluggable code formatter |
+| `Builtins.contextlint` | Context-aware linter |
+| `Builtins.err_check` | Error handling checker |
+| `Builtins.ryl` | General-purpose linter |
+| `Builtins.mise` | Validate `mise.toml` configuration |
+| `Builtins.buf_lint` | Protobuf linter |
+| `Builtins.buf_format` | Protobuf formatter |
+| `Builtins.vacuum` | OpenAPI linter |
+| `Builtins.just_format` | Justfile formatter |
+| `Builtins.php_cs` | PHP coding standards fixer |
+
+## Creating custom steps
+
+When no builtin exists for your tool, define a step directly:
+
+```pkl hk.pkl
+amends "package://github.com/jdx/hk/releases/download/v1.41.0/hk@1.41.0#/Config.pkl"
+
+hooks {
+    ["pre-commit"] {
+        steps {
+            ["custom-tool"] {
+                glob = List("**/*.custom")
+                check = "custom-tool --check {{files}}"
+                fix = "custom-tool --fix {{files}}"
+                batch = true
+            }
+        }
+    }
+}
+```
+
+You can also extract shared steps as local variables to reuse across hooks:
+
+```pkl hk.pkl
+amends "package://github.com/jdx/hk/releases/download/v1.41.0/hk@1.41.0#/Config.pkl"
+
+local linters = new Mapping<String, Step> {
+    ["my-linter"] {
+        glob = List("**/*.go")
+        check = "my-linter {{files}}"
+        fix = "my-linter --fix {{files}}"
+    }
+}
+
+hooks {
+    ["pre-commit"] {
+        fix = true
+        steps = linters
+    }
+    ["check"] {
+        steps = linters
+    }
+}
+```

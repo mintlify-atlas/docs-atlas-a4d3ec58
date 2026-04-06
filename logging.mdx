@@ -1,0 +1,259 @@
+---
+title: "Logging and debugging"
+description: "Control log levels, enable tracing, generate timing reports, and debug common issues with hk."
+---
+
+hk provides several ways to control logging output and diagnose problems during execution.
+
+## Log levels
+
+hk supports standard log levels that control how much information is displayed:
+
+| Level   | What you see                                                      |
+| ------- | ----------------------------------------------------------------- |
+| `error` | Only error messages                                               |
+| `warn`  | Warnings and errors (console default)                             |
+| `info`  | Informational messages, warnings, and errors                      |
+| `debug` | Debug information including file operations and step details      |
+| `trace` | All internal operations — very verbose                            |
+
+## Setting log levels
+
+### CLI flags
+
+The `-v` / `--verbose` flag is the quickest way to raise the log level for a single command:
+
+```bash
+# debug level — shows which files are being checked or fixed
+hk check -v
+hk fix --verbose
+
+# trace level — shows all internal operations
+hk check -vv
+```
+
+- `-v` or `--verbose` sets the level to `debug`
+- `-vv` sets the level to `trace`
+
+### Environment variable
+
+Use `HK_LOG` to set the level for a command or for the entire session:
+
+```bash
+# Single command
+HK_LOG=debug hk check
+HK_LOG=trace hk fix
+
+# Entire session
+export HK_LOG=debug
+hk check
+hk fix
+```
+
+### Log file output
+
+By default hk writes logs to `~/.local/state/hk/hk.log`. You can redirect the file or set an independent level for it:
+
+```bash
+# Redirect to a custom path
+HK_LOG_FILE=/tmp/my-hk.log hk check
+
+# Capture trace logs in the file without cluttering the console
+HK_LOG=warn HK_LOG_FILE_LEVEL=trace hk check
+```
+
+`HK_LOG_FILE_LEVEL` defaults to the value of `HK_LOG` when not set.
+
+## Quiet and silent modes
+
+```bash
+# Suppress all non-error output
+hk check --quiet
+hk check -q
+
+# Suppress all output — rely on exit codes only
+hk check --silent
+```
+
+## Tracing and performance diagnostics
+
+hk includes built-in tracing for detailed execution tracking and performance analysis.
+
+### Enabling tracing
+
+Use the `--trace` flag or the `HK_TRACE` environment variable:
+
+```bash
+# Console trace output (text mode)
+hk check --trace
+HK_TRACE=1 hk check
+HK_TRACE=text hk check
+
+# JSON/JSONL output for programmatic analysis
+HK_TRACE=json hk check > trace.jsonl
+hk check --trace --json > trace.jsonl
+```
+
+### Trace output formats
+
+**Text mode** — human-readable hierarchical output with timing:
+
+```
+  0.123s INFO Starting check
+  0.456s ├─ lint::eslint
+  0.789s │  ├─ Running eslint on 45 files
+  1.234s │  └─ Complete (478ms)
+  1.567s └─ Complete (1.444s)
+```
+
+**JSON mode** — newline-delimited JSON (JSONL), suitable for piping to `jq` or other tools:
+
+```json
+{"type":"meta","span_schema_version":1,"hk_version":"1.12.1","pid":12345}
+{"type":"span_start","ts_ns":123456,"id":"span_0","name":"check","attrs":{}}
+{"type":"span_start","ts_ns":456789,"id":"span_1","name":"lint","attrs":{"step":"eslint"},"parent_id":"span_0"}
+{"type":"span_end","ts_ns":789012,"id":"span_1"}
+{"type":"span_end","ts_ns":1234567,"id":"span_0"}
+```
+
+### Performance timing reports
+
+`HK_TIMING_JSON` writes a structured JSON report at the end of a run. Overlapping parallel intervals are merged so time is not double-counted:
+
+```bash
+HK_TIMING_JSON=/tmp/timing.json hk check
+cat /tmp/timing.json | jq .
+```
+
+Example report:
+
+```json
+{
+  "total": { "wall_time_ms": 12456 },
+  "steps": {
+    "lint": { "wall_time_ms": 4321, "profiles": ["ci", "fast"] },
+    "fmt": { "wall_time_ms": 2100 },
+    "typecheck": { "wall_time_ms": 6035 }
+  }
+}
+```
+
+`steps` maps each step name to:
+- `wall_time_ms` — merged wall time in milliseconds
+- `profiles` — (optional) profiles required by the step; omitted when none
+
+## Common debugging scenarios
+
+<AccordionGroup>
+  <Accordion title="Debugging step execution">
+    To see which files are being processed by each step:
+
+    ```bash
+    # Debug level shows file operations
+    HK_LOG=debug hk check
+
+    # Trace level shows every internal operation
+    HK_LOG=trace hk check
+    ```
+
+    To see exactly which steps would run without executing them, use `--plan`:
+
+    ```bash
+    hk check --plan
+    ```
+  </Accordion>
+
+  <Accordion title="Debugging configuration issues">
+    Validate your configuration:
+
+    ```bash
+    hk validate
+    ```
+
+    Check which steps are loaded and their file matches with `--plan`:
+
+    ```bash
+    hk check --all --plan
+    ```
+  </Accordion>
+
+  <Accordion title="Debugging performance issues">
+    Generate a timing report to identify slow steps:
+
+    ```bash
+    HK_TIMING_JSON=/tmp/timing.json hk check
+    cat /tmp/timing.json | jq .
+    ```
+
+    Use tracing for a step-by-step execution timeline:
+
+    ```bash
+    hk check --trace
+    ```
+
+    For machine-readable analysis, capture JSONL output:
+
+    ```bash
+    HK_TRACE=json hk check > trace.jsonl
+    jq 'select(.type == "span_end")' trace.jsonl
+    ```
+  </Accordion>
+
+  <Accordion title="Debugging configuration issues">
+    Validate your configuration with verbose output:
+
+    ```bash
+    hk validate -v
+    ```
+
+    Check which steps are loaded and their file matches:
+
+    ```bash
+    hk check --all --plan
+    ```
+
+    Debug a specific profile:
+
+    ```bash
+    HK_LOG=debug hk check --profile slow
+    ```
+  </Accordion>
+
+  <Accordion title="Debugging git hook issues">
+    Test a hook directly with debug output:
+
+    ```bash
+    HK_LOG=debug hk run pre-commit
+    ```
+
+    Check whether hooks are installed correctly:
+
+    ```bash
+    ls -la .git/hooks/
+    ```
+
+    If you suspect stash behavior is causing issues, switch to patch-file mode and add debug logging:
+
+    ```bash
+    HK_STASH=patch-file HK_LOG=debug hk run pre-commit
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Tips
+
+<Tip>
+  Start with `-v`. For most debugging, `hk check -v` provides enough detail without overwhelming output.
+</Tip>
+
+<Tip>
+  Use log files for trace-level detail. Set `HK_LOG_FILE_LEVEL=trace` to capture a full trace to disk while keeping the console clean.
+</Tip>
+
+<Tip>
+  Pipe JSON trace output to `jq` for filtering and analysis. For example, `jq 'select(.type == "span_end")' trace.jsonl` shows only completed spans.
+</Tip>
+
+<Tip>
+  Debug specific profiles with `HK_LOG=debug hk check --profile slow` to narrow down which steps in that profile are misbehaving.
+</Tip>

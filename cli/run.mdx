@@ -1,0 +1,180 @@
+---
+title: "hk run"
+description: "Explicitly run a named git hook without committing."
+---
+
+**Usage**: `hk run [FLAGS] [FILES]… <SUBCOMMAND>`
+
+**Alias**: `r`
+
+`hk run` lets you manually trigger a specific git hook by name. This is useful for testing hook behavior, running hooks in CI, or invoking hooks outside of a git operation. hk itself calls these subcommands when it is invoked by git.
+
+## Subcommands
+
+### hk run pre-commit
+
+**Usage**: `hk run pre-commit [FLAGS] [FILES]…`
+
+**Alias**: `pc`
+
+Runs the `pre-commit` hook. This is the hook git triggers before creating a commit. It operates on staged files by default.
+
+```bash
+# Run pre-commit hook against staged files
+hk run pre-commit
+
+# Run pre-commit hook against all files
+hk run pre-commit --all
+
+# Run pre-commit hook against specific files
+hk run pre-commit src/main.rs
+```
+
+### hk run pre-push
+
+**Usage**: `hk run pre-push [FLAGS] [ARGS]…`
+
+**Alias**: `pp`
+
+Runs the `pre-push` hook. This is the hook git triggers before pushing to a remote. Accepts optional `REMOTE` and `URL` arguments to simulate git's invocation.
+
+```bash
+# Run pre-push hook
+hk run pre-push
+
+# Simulate a push to a specific remote
+hk run pre-push origin https://github.com/example/repo.git
+```
+
+### hk run commit-msg
+
+**Usage**: `hk run commit-msg [FLAGS] <COMMIT_MSG_FILE> [FILES]…`
+
+**Alias**: `cm`
+
+Runs the `commit-msg` hook. This is the hook git triggers to validate the commit message. Requires the path to the commit message file as an argument.
+
+```bash
+# Run commit-msg hook (git passes .git/COMMIT_EDITMSG)
+hk run commit-msg .git/COMMIT_EDITMSG
+
+# Test with a custom message file
+hk run commit-msg /tmp/my-commit-message.txt
+```
+
+### hk run prepare-commit-msg
+
+**Usage**: `hk run prepare-commit-msg [FLAGS] <ARGS>…`
+
+**Alias**: `pcm`
+
+Runs the `prepare-commit-msg` hook. This hook fires before the commit message editor opens. Accepts the commit message file, an optional source (`message`, `template`, `merge`), and an optional SHA for amendments.
+
+```bash
+# Run prepare-commit-msg hook
+hk run prepare-commit-msg .git/COMMIT_EDITMSG
+
+# Specify source type
+hk run prepare-commit-msg .git/COMMIT_EDITMSG merge
+
+# Specify source and SHA (for --amend)
+hk run prepare-commit-msg .git/COMMIT_EDITMSG commit abc1234
+```
+
+## Flags
+
+All `hk run` subcommands accept the same flags as [`hk check`](/cli/check) and [`hk fix`](/cli/fix).
+
+<ParamField query="-a, --all" type="boolean">
+  Run on all files instead of just staged files.
+</ParamField>
+
+<ParamField query="-c, --check" type="boolean">
+  Force check mode. Overrides `--fix`.
+</ParamField>
+
+<ParamField query="-e, --exclude" type="string[]">
+  Exclude files that would otherwise have been selected. Can be specified multiple times.
+</ParamField>
+
+<ParamField query="-f, --fix" type="boolean">
+  Force fix mode. This is the default unless `HK_FIX=0`. Overrides `--check`.
+</ParamField>
+
+<ParamField query="-g, --glob" type="string[]">
+  Run on files matching these glob patterns. Can be specified multiple times.
+</ParamField>
+
+<ParamField query="-P, --plan" type="boolean">
+  Print the execution plan instead of running steps.
+</ParamField>
+
+<ParamField query="-S, --step" type="string[]">
+  Run only specific named steps. Can be specified multiple times.
+</ParamField>
+
+<ParamField query="--fail-fast" type="boolean">
+  Abort on the first step failure.
+</ParamField>
+
+<ParamField query="--no-fail-fast" type="boolean">
+  Continue after failures.
+</ParamField>
+
+<ParamField query="--from-ref" type="string">
+  Start git reference for file selection. Requires `--to-ref`.
+</ParamField>
+
+<ParamField query="--to-ref" type="string">
+  End git reference for file selection. Requires `--from-ref`.
+</ParamField>
+
+<ParamField query="--pr" type="boolean">
+  Run against files changed in the current PR branch.
+</ParamField>
+
+<ParamField query="--skip-step" type="string[]">
+  Skip specific named steps. Can be specified multiple times.
+</ParamField>
+
+<ParamField query="--stage" type="boolean">
+  Enable auto-staging of files modified by fix steps.
+</ParamField>
+
+<ParamField query="--no-stage" type="boolean">
+  Disable auto-staging of files modified by fix steps.
+</ParamField>
+
+<ParamField query="--stash" type="string">
+  Stash method (`git`, `patch-file`, or `none`) for preserving unstaged changes.
+</ParamField>
+
+<ParamField query="--stats" type="boolean">
+  Display statistics about files matching each step.
+</ParamField>
+
+## Examples
+
+<CodeGroup>
+
+```bash Run pre-commit on staged files
+hk run pre-commit
+```
+
+```bash Run pre-commit on all files in CI
+hk run pre-commit --all
+```
+
+```bash Validate a commit message
+hk run commit-msg .git/COMMIT_EDITMSG
+```
+
+```bash Run pre-push against PR diff
+hk run pre-push --pr
+```
+
+```bash Dry-run: see the plan without executing
+hk run pre-commit --all --plan
+```
+
+</CodeGroup>

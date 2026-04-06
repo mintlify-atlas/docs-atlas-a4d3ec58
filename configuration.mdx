@@ -1,0 +1,444 @@
+---
+title: "Configuration"
+description: "How hk layers configuration from built-in defaults up through CLI flags, and a full reference for every setting."
+---
+
+hk builds its effective configuration by layering sources from lowest to highest precedence:
+
+| Precedence | Source | Scope |
+|---|---|---|
+| 1 (lowest) | Built-in defaults | All projects |
+| 2 | [hkrc](#hkrc) (`~/.config/hk/config.pkl`) | All projects (user-level) |
+| 3 | [Project config](#hkpkl) (`hk.pkl` or `hk.local.pkl`) | Single project |
+| 4 | [Git config](#git-configuration) (global, then local) | Per-repo |
+| 5 | [Environment variables](#settings-reference) (`HK_*`) | Per-invocation |
+| 6 (highest) | [CLI flags](#settings-reference) | Per-invocation |
+
+Higher layers override lower. For hooks and steps, layers are **additive** — hkrc can define hooks the project doesn't have, but the project's definition wins on collision.
+
+## `hk.pkl`
+
+hk is configured via `hk.pkl`, written in [Pkl](https://pkl-lang.org/) from Apple. By default, hk uses the pkl CLI to evaluate configuration. Set `HK_PKL_BACKEND=pklr` to use the built-in evaluator instead — no pkl CLI required.
+
+### Config file paths
+
+hk searches for config files in the following order (first match wins):
+
+| Precedence | Path | Purpose |
+|---|---|---|
+| 1 | `hk.local.pkl` | Local overrides — do not commit to source control |
+| 2 | `.config/hk.local.pkl` | Local overrides nested under `.config/` |
+| 3 | `hk.pkl` | Standard project config |
+| 4 | `.config/hk.pkl` | Standard project config nested under `.config/` |
+
+hk walks up from the current directory to `/`, checking each directory for these files. The first file found is used.
+
+<Note>
+  Set `HK_FILE` to override the search and point hk at a specific path.
+</Note>
+
+Unlike mise, hk does not merge multiple config files or support `conf.d/` directories. Local overrides use Pkl's `amends` mechanism instead (see [`hk.local.pkl`](#hklocalpkl)).
+
+### Example
+
+Here is a complete `hk.pkl` showing hooks, steps, and builtins:
+
+```pkl hk.pkl
+amends "package://github.com/jdx/hk/releases/download/v1.41.0/hk@1.41.0#/Config.pkl"
+import "package://github.com/jdx/hk/releases/download/v1.41.0/hk@1.41.0#/Builtins.pkl"
+
+local linters = new Mapping<String, Step> {
+    // linters can be manually defined
+    ["eslint"] {
+        // filter staged files to those matching these globs; skip if none match
+        glob = List("*.js", "*.ts")
+        // read-only check command
+        check = "eslint {{files}}"
+        // fix command that modifies files in place
+        fix = "eslint --fix {{files}}"
+    }
+    // linters can also come from the Builtins library
+    ["prettier"] = Builtins.prettier
+}
+
+hooks {
+    ["pre-commit"] {
+        fix = true       // run the fix command to auto-modify files
+        stash = "git"    // stash unstaged changes before running fix steps
+        steps = linters
+    }
+    ["pre-push"] {
+        steps = linters
+    }
+    // "fix" and "check" are special hooks for `hk fix` and `hk check` commands
+    ["fix"] {
+        fix = true
+        steps = linters
+    }
+    ["check"] {
+        steps = linters
+        // optional: run a report after the hook finishes; HK_REPORT_JSON contains timing JSON
+        report = #"node scripts/upload-timings.js <<<"$HK_REPORT_JSON""#
+    }
+}
+```
+
+The first line (`amends`) is critical — it imports the base configuration schema for type-checking and base classes.
+
+### `hk.local.pkl`
+
+If `hk.local.pkl` exists it is used instead of `hk.pkl`. It is intended for local developer overrides and should not be committed to source control.
+
+The first line should amend `./hk.pkl`:
+
+```pkl hk.local.pkl
+amends "./hk.pkl"
+import "./hk.pkl" as repo_config
+
+hooks = (repo_config.hooks) {
+    ["pre-commit"] {
+        (steps) {
+            ["custom-step"] = new Step {
+                check = "my-custom-check"
+            }
+        }
+    }
+}
+```
+
+## Step groups
+
+A `Group` is a collection of steps executed in parallel. All steps in a group must finish before the next group starts, and no step from the next group starts until the current group is complete.
+
+```pkl
+hooks {
+    ["pre-commit"] {
+        steps {
+            ["build"] = new Group {
+                steps = new Mapping<String, Step> {
+                    ["ts"] = new Step {
+                        fix = "tsc -b"
+                    }
+                    ["rs"] = new Step {
+                        fix = "cargo build"
+                    }
+                }
+            }
+            // these steps run in parallel after "build" finishes
+            ["lint"] = new Group {
+                steps = new Mapping<String, Step> {
+                    ["prettier"] = new Step {
+                        check = "prettier --check {{files}}"
+                    }
+                    ["eslint"] = new Step {
+                        check = "eslint {{files}}"
+                    }
+                }
+            }
+        }
+    }
+}
+```
+
+Use `depends` and read/write locks for finer-grained ordering instead of groups where possible.
+
+## Git status in conditions and templates
+
+hk exposes the current git status to both condition expressions and Tera templates via a `git` object, so you can avoid shelling out in conditions.
+
+**Available fields:**
+
+- `git.staged_files`, `git.unstaged_files`, `git.untracked_files`, `git.modified_files`
+- Staged classifications: `git.staged_added_files`, `git.staged_modified_files`, `git.staged_deleted_files`, `git.staged_renamed_files`, `git.staged_copied_files`
+- Unstaged classifications: `git.unstaged_modified_files`, `git.unstaged_deleted_files`, `git.unstaged_renamed_files`
+
+<Tabs>
+  <Tab title="In conditions">
+    ```pkl
+    // Run only if there are any staged files
+    condition = "git.staged_files != []"
+
+    // Run only if a Cargo.toml file is staged
+    condition = #"any(git.staged_files, {hasSuffix(#, "Cargo.toml")})"#
+
+    // Added or Renamed (AR):
+    condition = "(git.staged_added_files != []) || (git.staged_renamed_files != [])"
+
+    // Renamed or Deleted (RD):
+    condition = "(git.staged_renamed_files != []) || (git.staged_deleted_files != [])"
+    ```
+  </Tab>
+  <Tab title="In templates">
+    ```pkl
+    check = "echo staged: {{ git.staged_files }}"
+    ```
+  </Tab>
+</Tabs>
+
+These lists contain repository-relative paths for files currently in each state.
+
+## `hkrc`
+
+<Warning>
+  `.hkrc.pkl` and `--hkrc` are deprecated and will be removed in hk v2.
+
+  - **Per-project overrides:** use `hk.local.pkl` in the project root.
+  - **Global user config:** use `~/.config/hk/config.pkl`.
+</Warning>
+
+The `hkrc` is a global configuration file applied to all projects. hk discovers it in this order (first match wins):
+
+| Precedence | Path | Purpose |
+|---|---|---|
+| 1 | `.hkrc.pkl` (CWD) | Per-directory override **(deprecated)** |
+| 2 | `~/.hkrc.pkl` | Home directory **(deprecated)** |
+| 3 | `~/.config/hk/config.pkl` | XDG config directory **(recommended)** |
+
+The hkrc file uses the same format as `hk.pkl`. It is merged with the project config using **project wins** semantics:
+
+- **Settings** (`jobs`, `fail_fast`, etc.): project config overrides hkrc.
+- **Environment variables**: hkrc values are set first; project config can override them.
+- **Hooks/steps**: additive — hkrc can add hooks and steps the project doesn't define, but when both define the same step, the project's definition wins.
+
+### Managing global hook preferences
+
+<AccordionGroup>
+  <Accordion title="Run your own linters on every project">
+    Add steps to your hkrc. hk merges them into every project's hooks:
+
+    ```pkl ~/.config/hk/config.pkl
+    amends "package://github.com/jdx/hk/releases/download/v1.41.0/hk@1.41.0#/Config.pkl"
+
+    hooks {
+        ["pre-commit"] {
+            steps {
+                ["gitleaks"] { check = "gitleaks git --staged" }
+            }
+        }
+    }
+    ```
+  </Accordion>
+  <Accordion title="Skip steps you don't want from a project">
+    hkrc can't remove project steps — project wins on collision. To skip a step, use git config (persists) or an env var (one session):
+
+    ```bash
+    # Skip a step permanently in this repo
+    git config --local hk.skipSteps "slow-linter,noisy-formatter"
+
+    # Skip for one run
+    HK_SKIP_STEPS=slow-linter hk run pre-commit
+    ```
+  </Accordion>
+  <Accordion title="Completely replace a project's hooks locally">
+    Create `hk.local.pkl` in the project root and add it to `.gitignore`:
+
+    ```pkl hk.local.pkl
+    amends "./hk.pkl"
+    import "./hk.pkl" as upstream
+
+    hooks = (upstream.hooks) {
+        ["pre-commit"] {
+            steps {
+                // keep only the steps you want
+                ["gitleaks"] = upstream.hooks["pre-commit"].steps["gitleaks"]
+            }
+        }
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Settings reference
+
+Settings are sourced from multiple places; higher precedence overrides lower. List settings (`exclude`, `skip_steps`, `skip_hooks`, `hide_warnings`) use **union semantics** — values from all sources are combined.
+
+| Precedence | Source | Example |
+|---|---|---|
+| 1 (highest) | CLI flags | `hk check --fail-fast` |
+| 2 | Environment variables (`HK_*`) | `HK_JOBS=8 hk check` |
+| 3 | Git config (local repo) | `git config --local hk.jobs 4` |
+| 4 | Git config (global/system) | `git config --global hk.failFast false` |
+| 5 | Project config (`hk.pkl`) | `jobs = 4` in `hk.pkl` |
+| 6 | User rc (hkrc) | `jobs = 4` in `~/.config/hk/config.pkl` |
+| 7 (lowest) | Built-in defaults | `jobs = 0` (auto, CPU cores) |
+
+<AccordionGroup>
+  <Accordion title="jobs">
+    **Type:** `UInt` | **Default:** `0` (auto-detect from CPU cores)
+
+    **Env var:** `HK_JOBS` | **Git config:** `hk.jobs`
+
+    The number of parallel processes hk uses to run steps concurrently. Set to `0` to let hk choose based on available CPU cores.
+
+    ```pkl
+    jobs = 4
+    ```
+  </Accordion>
+  <Accordion title="fail_fast">
+    **Type:** `Boolean` | **Default:** `true`
+
+    **Env var:** `HK_FAIL_FAST` | **Git config:** `hk.failFast`
+
+    When `true`, hk stops remaining steps as soon as one fails. When `false`, hk continues and reports all failures at the end.
+
+    ```pkl
+    fail_fast = false
+    ```
+  </Accordion>
+  <Accordion title="exclude">
+    **Type:** `String | List<String> | Regex` | **Default:** `(empty)`
+
+    **Env var:** `HK_EXCLUDE` | **Git config:** `hk.exclude`
+
+    Global exclude patterns applied to all hooks and steps. Simple directory names automatically match their contents. Values from all sources are unioned together.
+
+    ```pkl
+    exclude = List("node_modules", "dist", "**/*.min.js")
+    ```
+  </Accordion>
+  <Accordion title="skip_steps">
+    **Type:** `List<String>` | **Default:** `(empty)`
+
+    **Env var:** `HK_SKIP_STEPS` | **Git config:** `hk.skipSteps`
+
+    Step names to skip when running hooks. Values from all sources are unioned together.
+
+    ```pkl
+    skip_steps = List("slow-test")
+    ```
+  </Accordion>
+  <Accordion title="skip_hooks">
+    **Type:** `List<String>` | **Default:** `(empty)`
+
+    **Env var:** `HK_SKIP_HOOKS` | **Git config:** `hk.skipHook`
+
+    Hook names to skip entirely. Values from all sources are unioned together.
+
+    ```pkl
+    skip_hooks = List("pre-push")
+    ```
+  </Accordion>
+  <Accordion title="profiles">
+    **Type:** `List<String>` | **Default:** `(empty)`
+
+    **Env var:** `HK_PROFILE` | **Git config:** `hk.profile`
+
+    Profiles to enable or disable. Steps opt in to profiles via `step.profiles`. Prefix a profile name with `!` to explicitly disable it.
+
+    ```pkl
+    profiles = List("ci", "slow")
+    ```
+  </Accordion>
+  <Accordion title="stage">
+    **Type:** `Boolean` | **Default:** `true` (on hooks with `fix = true`)
+
+    **Env var:** `HK_STAGE`
+
+    When `true`, hk automatically stages files modified by fix commands. Set to `false` to apply fixes without re-staging (useful with `fail_on_fix = true` to force review).
+
+    ```pkl
+    stage = false
+    ```
+  </Accordion>
+  <Accordion title="default_branch">
+    **Type:** `String` | **Default:** auto-detected
+
+    The default branch to compare against when hk needs a reference. Supports local branch names (`main`) and remote-qualified refs (`origin/main`).
+
+    ```pkl
+    default_branch = "origin/main"
+    ```
+  </Accordion>
+  <Accordion title="stash_backup_count">
+    **Type:** `UInt` | **Default:** `20`
+
+    Number of backup patch files to keep per repository when using git stash. Set to `0` to disable patch backup creation.
+
+    ```pkl
+    stash_backup_count = 5
+    ```
+  </Accordion>
+  <Accordion title="walk_ignore">
+    **Type:** `Boolean` | **Default:** `true`
+
+    When `true`, hk respects `.gitignore` and other ignore files when walking directories.
+
+    ```pkl
+    walk_ignore = false
+    ```
+  </Accordion>
+  <Accordion title="warnings / hide_warnings">
+    **Type:** `List<String>` | **Default:** `(empty)`
+
+    **Git config:** `hk.warnings` / `hk.hideWarnings`
+
+    `warnings` controls which warning categories are shown (available tag: `missing-profiles`). `hide_warnings` suppresses specific warnings. Values from all sources are unioned together.
+
+    ```pkl
+    warnings = List("missing-profiles")
+    hide_warnings = List("missing-profiles")
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Git configuration
+
+hk can be configured through git config. All keys use the `hk.` prefix:
+
+```bash
+# Set number of parallel jobs
+git config --local hk.jobs 5
+
+# Disable fail-fast behavior
+git config --local hk.failFast false
+
+# Add profiles
+git config --local hk.profile slow
+git config --local --add hk.profile fast
+
+# Add exclude patterns (union semantics)
+git config --local hk.exclude "node_modules"
+git config --local --add hk.exclude "**/*.min.js"
+
+# Skip specific steps
+git config --local hk.skipSteps "slow-test,flaky-test"
+
+# Skip entire hooks
+git config --local hk.skipHook "pre-push"
+
+# Configure warnings
+git config --local hk.warnings "missing-profiles"
+git config --local hk.hideWarnings "missing-profiles"
+```
+
+Git config supports both multi-value entries (multiple keys with the same name) and comma-separated values in a single entry.
+
+## User configuration
+
+User-specific defaults live in `~/.config/hk/config.pkl`:
+
+```pkl ~/.config/hk/config.pkl
+amends "package://github.com/jdx/hk/releases/download/v1.41.0/hk@1.41.0#/Config.pkl"
+
+jobs = 4
+fail_fast = false
+exclude = List("node_modules", "dist", "build")
+skip_steps = List("slow-test")
+skip_hooks = List("pre-push")
+```
+
+## Configuration introspection
+
+Use the `hk config` commands to inspect your active configuration:
+
+```bash
+# Show effective configuration (all sources merged)
+hk config dump
+
+# Get a specific configuration value
+hk config get exclude
+hk config get skip_steps
+
+# Show configuration source precedence
+hk config sources
+```

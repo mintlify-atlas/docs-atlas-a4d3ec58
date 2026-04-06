@@ -1,0 +1,163 @@
+---
+title: "hk config"
+description: "Inspect and introspect the effective merged hk configuration."
+---
+
+**Usage**: `hk config <SUBCOMMAND>`
+
+**Alias**: `cfg`
+
+`hk config` provides subcommands for inspecting hk's effective configuration. Configuration is merged from multiple sources in the following precedence order (highest to lowest):
+
+1. CLI flags
+2. Environment variables
+3. Git config (repository-local)
+4. User config (`~/.config/hk/config.pkl`)
+5. Git config (global)
+6. Project config (`hk.pkl`)
+7. Built-in defaults
+
+## Subcommands
+
+### hk config dump
+
+**Usage**: `hk config dump [--format <FORMAT>]`
+
+Prints the effective merged configuration from all sources. Useful for debugging which values are active at runtime.
+
+<ParamField query="--format" type="string" default="json">
+  Output format. Accepted values: `json`, `toml`.
+</ParamField>
+
+```bash
+# Dump as JSON (default)
+hk config dump
+
+# Dump as TOML
+hk config dump --format toml
+```
+
+Example output:
+
+```json
+{
+  "jobs": 8,
+  "fail_fast": false,
+  "stage": true,
+  "warnings": [],
+  "exclude": [],
+  "skip_steps": [],
+  "skip_hooks": [],
+  "enabled_profiles": [],
+  "disabled_profiles": []
+}
+```
+
+---
+
+### hk config get
+
+**Usage**: `hk config get <KEY>`
+
+Returns the current value of a single configuration key.
+
+<ParamField body="KEY" type="string" required>
+  The configuration key to retrieve. Available keys:
+
+  `jobs`, `enabled_profiles`, `disabled_profiles`, `fail_fast`, `display_skip_reasons`, `warnings`, `exclude`, `skip_steps`, `skip_hooks`, `stage`
+</ParamField>
+
+```bash
+hk config get jobs
+# 8
+
+hk config get fail_fast
+# false
+
+hk config get skip_steps
+# []
+```
+
+---
+
+### hk config sources
+
+**Usage**: `hk config sources`
+
+Lists all configuration sources in order of precedence, showing which sources are active and where each one is located on disk.
+
+```bash
+hk config sources
+```
+
+Example output:
+
+```
+Configuration sources (highest to lowest precedence):
+  1. CLI flags
+  2. Environment variables
+  3. Git config (local): /home/user/project/.git/config
+  4. User config: /home/user/.hkrc.pkl
+  5. Git config (global): /home/user/.gitconfig
+  6. Project config: /home/user/project/hk.pkl
+  7. Built-in defaults
+```
+
+---
+
+### hk config explain
+
+**Usage**: `hk config explain <KEY>`
+
+Shows the resolved value for a configuration key, its source, and the full precedence chain showing every layer that could affect it.
+
+<ParamField body="KEY" type="string" required>
+  The configuration key to explain.
+</ParamField>
+
+```bash
+hk config explain jobs
+```
+
+Example output:
+
+```
+Key: jobs
+Value: 4
+Source: environment variable (HK_JOBS=4)
+
+Precedence chain:
+  CLI flag:            (not set)
+  HK_JOBS env var:     4  ← active
+  Git config (local):  (not set)
+  User config:         (not set)
+  Git config (global): (not set)
+  Project config:      (not set)
+  Built-in default:    8
+```
+
+## Examples
+
+<CodeGroup>
+
+```bash Dump full config as JSON
+hk config dump
+```
+
+```bash Dump full config as TOML
+hk config dump --format toml
+```
+
+```bash Get a specific key
+hk config get jobs
+```
+
+```bash List all config sources
+hk config sources
+```
+
+```bash Explain where a value comes from
+hk config explain fail_fast
+```
+
+</CodeGroup>

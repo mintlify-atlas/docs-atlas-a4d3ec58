@@ -1,0 +1,90 @@
+{
+  "projectType": "cli-tool",
+  "projectName": "hk",
+  "projectDescription": "A high-performance git hook manager and project linting tool that runs linters in parallel with file-level read/write locks to maximize concurrency and prevent race conditions.",
+  "theme": "aspen",
+  "primaryColor": "#4ed4eb",
+  "lightColor": "#28566e",
+  "darkColor": "#c4dbe3",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "why-hk"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration",
+              "hooks",
+              "builtins",
+              "pkl-introduction",
+              "mise-integration"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "environment-variables",
+              "logging",
+              "benchmarks"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "CLI Reference",
+        "groups": [
+          {
+            "group": "Commands",
+            "pages": [
+              "cli/overview",
+              "cli/check",
+              "cli/fix",
+              "cli/run",
+              "cli/init",
+              "cli/install",
+              "cli/validate",
+              "cli/config",
+              "cli/util"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Parallel linter execution with file-level read/write locks preventing race conditions",
+    "90+ pre-configured built-in linters and formatters via Pkl configuration",
+    "Smart stashing with three-way merge to protect unstaged changes during hooks",
+    "Type-safe Pkl configuration language with schema validation and IDE support",
+    "Deep mise-en-place integration for tool management and task running",
+    "Built-in Rust-native utilities (trailing whitespace, end-of-file, merge conflict detection)",
+    "check_diff and check_list_files optimization modes to minimize write locks",
+    "Configurable profiles for running subsets of linters (e.g., slow, fast, CI)"
+  ],
+  "publicApiSurface": [
+    "hk check [--all] [--from-ref <REF>] [--to-ref <REF>] [--pr] [FILES]",
+    "hk fix [--all] [--from-ref <REF>] [--to-ref <REF>] [FILES]",
+    "hk run <HOOK> [FILES]",
+    "hk init [--mise] [--force] [--interactive]",
+    "hk install [--mise]",
+    "hk uninstall",
+    "hk validate",
+    "hk config dump|get|sources|explain",
+    "hk builtins",
+    "hk util trailing-whitespace|end-of-file-fixer|check-merge-conflict|...",
+    "hk test [--step <STEP>]",
+    "hk migrate pre-commit",
+    "Builtins.prettier, Builtins.eslint, Builtins.cargo_fmt, Builtins.ruff, ...",
+    "Config.pkl Step: check, fix, glob, batch, check_first, check_diff, check_list_files, depends, exclusive, profiles, env",
+    "Config.pkl Hook: fix, stash, steps, report"
+  ]
+}

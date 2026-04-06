@@ -1,0 +1,154 @@
+---
+title: "hk check"
+description: "Run linters in read-only check mode against staged or specified files."
+---
+
+**Usage**: `hk check [FLAGS] [FILES]…`
+
+**Alias**: `c`
+
+`hk check` runs all configured linter steps in check mode — no files are modified. It is equivalent to running the `check` hook defined in your `hk.pkl`. By default it operates on staged files only; use `--all` to check every file in the repository.
+
+<Tip>
+  Use `hk check --all` in CI pipelines to validate the entire codebase. Use `hk check --pr` to check only the files changed in the current pull request branch.
+</Tip>
+
+## Arguments
+
+<ParamField body="FILES" type="string[]">
+  One or more specific files to check. Conflicts with `--all`, `--fix`, and `--check`.
+</ParamField>
+
+## Flags
+
+<ParamField query="-a, --all" type="boolean">
+  Run on all files in the repository instead of just staged files.
+</ParamField>
+
+<ParamField query="-c, --check" type="boolean">
+  Force check mode — run the check command even if fix mode is the default. Overrides `--fix`.
+</ParamField>
+
+<ParamField query="-e, --exclude" type="string[]">
+  Exclude files that would otherwise have been selected. Can be specified multiple times.
+
+  ```bash
+  hk check --exclude "vendor/**" --exclude "*.generated.go"
+  ```
+</ParamField>
+
+<ParamField query="-f, --fix" type="boolean">
+  Force fix mode — run the fix command instead of the check command. This is the default behavior unless `HK_FIX=0`. Overrides `--check`.
+</ParamField>
+
+<ParamField query="-g, --glob" type="string[]">
+  Run on files matching these glob patterns. Can be specified multiple times.
+
+  ```bash
+  hk check --glob "src/**/*.ts" --glob "tests/**/*.ts"
+  ```
+</ParamField>
+
+<ParamField query="-P, --plan" type="boolean">
+  Print the execution plan instead of running steps. Shows which steps will run and on which files.
+</ParamField>
+
+<ParamField query="-S, --step" type="string[]">
+  Run only specific named steps. Can be specified multiple times.
+
+  ```bash
+  hk check --step eslint --step prettier
+  ```
+</ParamField>
+
+<ParamField query="--fail-fast" type="boolean">
+  Abort on the first step failure. Opposite of `--no-fail-fast`.
+</ParamField>
+
+<ParamField query="--no-fail-fast" type="boolean">
+  Continue running remaining steps even after a failure. Opposite of `--fail-fast`.
+</ParamField>
+
+<ParamField query="--from-ref" type="string">
+  Start git reference for determining which files to check. Requires `--to-ref`.
+
+  ```bash
+  hk check --from-ref main --to-ref HEAD
+  ```
+</ParamField>
+
+<ParamField query="--to-ref" type="string">
+  End git reference for determining which files to check. Requires `--from-ref`.
+</ParamField>
+
+<ParamField query="--pr" type="boolean">
+  Check only files changed in the current PR or branch. This is a shortcut for `--from-ref DEFAULT_BRANCH --to-ref HEAD`. Conflicts with `--all`, `--files`, `--from-ref`, `--glob`, and `--to-ref`.
+</ParamField>
+
+<ParamField query="--skip-step" type="string[]">
+  Skip specific named steps. Can be specified multiple times.
+
+  ```bash
+  hk check --skip-step slow-linter
+  ```
+</ParamField>
+
+<ParamField query="--stage" type="boolean">
+  Enable auto-staging of files that were modified by fix steps. Overrides `--no-stage`.
+</ParamField>
+
+<ParamField query="--no-stage" type="boolean">
+  Disable auto-staging of files modified by fix steps. Overrides `--stage`.
+</ParamField>
+
+<ParamField query="--stash" type="string">
+  Stash method to use when running as a git hook. Controls how unstaged changes are preserved during the run.
+
+  | Value | Description |
+  |-------|-------------|
+  | `git` | Use `git stash` to save and restore unstaged changes. |
+  | `patch-file` | Save unstaged changes to a patch file and reapply after. |
+  | `none` | Do not stash — run against the working tree as-is. |
+</ParamField>
+
+<ParamField query="--stats" type="boolean">
+  Display statistics about which files match each configured step.
+</ParamField>
+
+## Examples
+
+<CodeGroup>
+
+```bash Check staged files
+hk check
+```
+
+```bash Check all files
+hk check --all
+```
+
+```bash Check PR diff
+hk check --pr
+```
+
+```bash Check specific files
+hk check src/main.rs src/lib.rs
+```
+
+```bash Check with a ref range
+hk check --from-ref v1.0.0 --to-ref HEAD
+```
+
+```bash Run only specific steps
+hk check --step rustfmt --step clippy
+```
+
+```bash Preview the plan without running
+hk check --all --plan
+```
+
+```bash Check only TypeScript files
+hk check --glob "**/*.ts"
+```
+
+</CodeGroup>
